@@ -1,6 +1,6 @@
 import torch
 import hydra
-import lightning.pytorch as pl
+import pytorch_lightning as pl
 import copy
 import math
 

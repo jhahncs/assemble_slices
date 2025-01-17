@@ -97,15 +97,14 @@ from puzzlefusion_plusplus.vqvae.dataset.dataset import build_geometry_dataloade
 
 # In[14]:
 
-data_root_dir = '/disk2/data/breaking_bad/'
+data_root_dir = '/data/jhahn/data/shape_dataset/'
 cfg = omegaconf.OmegaConf.load('config/ae/data.yaml')
 #cfg.data.save_pc_data_path = '/work/users/j/a/jahn25/breaking-bad-dataset/data/pc_data_test/everyday/'
-#cfg.data.mesh_data_dir = '/work/users/j/a/jahn25/breaking-bad-dataset/data/'
-cfg.data.save_pc_data_path = f'{data_root_dir}/pc_data/everyday/'
-cfg.data.mesh_data_dir = f'{data_root_dir}/'
-cfg.data.data_dir=f'{data_root_dir}/pc_data/everyday/train/'
-cfg.data.data_val_dir=f'{data_root_dir}/pc_data/everyday/val/'
-cfg.data.data_fn = "everyday.{}.txt"
+cfg.data.save_pc_data_path = f'{data_root_dir}/pc_data/shape/'
+cfg.data.mesh_data_dir = f'{data_root_dir}data'
+cfg.data.data_dir=f'{data_root_dir}/pc_data/shape/train/'
+cfg.data.data_val_dir=f'{data_root_dir}/pc_data/shape/val/'
+cfg.data.data_fn = "shape.{}.txt"
 main(cfg)   
 
 # In[ ]:

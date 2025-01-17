@@ -1,8 +1,8 @@
 import os
 import torch
 import hydra
-import lightning.pytorch as pl
-from lightning.pytorch.callbacks import LearningRateMonitor
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import LearningRateMonitor
 from puzzlefusion_plusplus.denoiser.dataset.dataset import build_geometry_dataloader
 import importlib
 from puzzlefusion_plusplus.denoiser.dataset import dataset
@@ -13,7 +13,7 @@ config_home_dir = './config'
 
 
 data_home_dir = '/disk2/data/breaking_bad/'
-data_home_dir = '/disk2/data/shape_dataset/'
+data_home_dir = '/data/jhahn/data/shape_dataset/'
 data_type_name = 'shape'
 
 
@@ -33,8 +33,8 @@ cfg = OmegaConf.merge(
 
 
 
-cfg.data.data_dir = data_home_dir+f'data/pc_data/{data_type_name}/train/'
-cfg.data.data_val_dir = data_home_dir+f'data/pc_data/{data_type_name}/val/'
+cfg.data.data_dir = data_home_dir+f'pc_data/{data_type_name}/train/'
+cfg.data.data_val_dir = data_home_dir+f'pc_data/{data_type_name}/val/'
 cfg.data.mesh_data_dir = data_home_dir+'data/'
 cfg.data.data_fn = data_type_name+".{}.txt"
 cfg.data.batch_size = 3
@@ -48,6 +48,8 @@ cfg.ckpt_path= None
 cfg.experiment_output_path = data_home_dir+'output/denoiser/${experiment_name}/'
 cfg.trainer.max_epochs =  3
 cfg.trainer.check_val_every_n_epoch =  1
+cfg.logger._target_ = 'pytorch_lightning.loggers.WandbLogger'
+cfg.checkpoint_monitor._target_ = 'pytorch_lightning.callbacks.ModelCheckpoint'
 
 
 cfg.trainer.strategy='ddp'

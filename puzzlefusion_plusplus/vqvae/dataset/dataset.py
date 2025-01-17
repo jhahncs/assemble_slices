@@ -66,11 +66,11 @@ class GeometryPartDataset(Dataset):
                     if self.category in line.split('/')
                 ]
         data_list = []
-
+        #print(self.data_dir)
         for mesh in mesh_list:
             mesh_dir = os.path.join(self.data_dir, mesh)
             if not os.path.isdir(mesh_dir):
-                print(f'{mesh} does not exist')
+                print(f'{mesh} does not exist {mesh_dir}')
                 continue
             fracs = os.listdir(mesh_dir)
             fracs.sort()

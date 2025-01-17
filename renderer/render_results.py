@@ -28,7 +28,7 @@ cfg_auto_aggl = omegaconf.OmegaConf.load(config_home_dir+'/auto_aggl.yaml')
 cfg = OmegaConf.merge( cfg_auto_aggl )
 
 data_home_dir = '/disk2/data/breaking_bad/'
-data_home_dir = '/disk2/data/shape_dataset/'
+data_home_dir = '/data/jhahn/data/shape_dataset/'
 
 cfg.experiment_output_path = ''
 cfg.inference_dir= data_home_dir+'results'
@@ -40,7 +40,7 @@ cfg.ffmpeg_path = '/usr/bin/ffmpeg'
 renderer = MyRenderer(cfg)
     
 sampled_files = renderer.sample_data_files()
-sampled_files = ['100']
+sampled_files = ['0']
 # sampled_files = ["1"]
 
 for file in sampled_files:
@@ -55,8 +55,8 @@ for file in sampled_files:
 
     renderer.save_img(parts, gt_transformation, gt_transformation, init_pose, os.path.join(save_path, "gt.png"))
 
-    if True:
-        continue
+    #if True:
+    #    continue
     frame = 0
 
     # bpy.ops.wm.save_mainfile(filepath=save_path + "test" + '.blend')
