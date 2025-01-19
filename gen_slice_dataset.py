@@ -77,7 +77,7 @@ for vol_index in range(10):
     mesh_obj_dict[vol_index]['original'] = _vol_norm_rotated
     #l = Line(-v+p, v+p).lw(3).c('red')
 
-    _vol_norm_rotated.write(f'{_dir}/piece.obj')
+    #_vol_norm_rotated.write(f'{_dir}/piece.obj')
     num_of_slices = random.randint(3,6)
     #num_of_slices = 5
     

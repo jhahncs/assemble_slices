@@ -46,6 +46,7 @@ class GeometryPartDataset(Dataset):
         self.rot_range = rot_range
 
         for file_name in tqdm(self.data_files):
+
             data_dict = np.load(os.path.join(self.data_dir, file_name))
             
         
