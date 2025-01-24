@@ -34,7 +34,7 @@ from utils.node_merge_utils import (
 )
 
 from jahn_src.myutil import get_noise_trans_rots_concat
-
+from jahn_src.verifier_jhahn import VerifierSliceMatching
 
 class AutoAgglomerative(pl.LightningModule):
     def __init__(self, cfg):
@@ -42,6 +42,7 @@ class AutoAgglomerative(pl.LightningModule):
         self.cfg = cfg
         self.denoiser = DenoiserTransformer(cfg.denoiser)
         #self.verifier = VerifierTransformer(cfg.verifier)
+        self.verifier = VerifierSliceMatching()
         self.encoder = VQVAE(cfg.ae)
         
         self.save_hyperparameters()
@@ -106,8 +107,8 @@ class AutoAgglomerative(pl.LightningModule):
         gt_trans = data_dict['part_trans']
         gt_rots = data_dict['part_rots']
         gt_trans_and_rots = torch.cat([gt_trans, gt_rots], dim=-1)
-        print(f'gt_trans_{gt_trans.shape}_{gt_trans}')
-        print(f'gt_rots_{gt_rots.shape}_{gt_rots}')
+        #print(f'gt_trans_{gt_trans.shape}_{gt_trans}')
+        #print(f'gt_rots_{gt_rots.shape}_{gt_rots}')
 
         '''
         Authors: jahn
@@ -115,7 +116,7 @@ class AutoAgglomerative(pl.LightningModule):
         #noisy_trans_and_rots = torch.randn(gt_trans_and_rots.shape, device=self.device)
         noisy_trans_and_rots = get_noise_trans_rots_concat(gt_trans_and_rots.shape, self.device)
             
-        print(f'noisy_trans_and_rots_{noisy_trans_and_rots.shape}_{noisy_trans_and_rots}')
+        #print(f'noisy_trans_and_rots_{noisy_trans_and_rots.shape}_{noisy_trans_and_rots}')
         ref_part = data_dict["ref_part"]        
 
         reference_gt_and_rots = torch.zeros_like(gt_trans_and_rots, device=self.device)
@@ -202,9 +203,10 @@ class AutoAgglomerative(pl.LightningModule):
             pts = pts * expanded_part_scale
             
             acc, acc_per_part, loss_per_data = calc_part_acc(pts, trans1=pred_trans, trans2=gt_trans, rot1=pred_rots, rot2=gt_rots, valids=data_dict['part_valids'], chamfer_distance=self.metric)
-            print('acc',acc.shape,acc)
-            print('acc_per_part',acc_per_part.shape,acc_per_part)
-            print('loss_per_data',loss_per_data.shape,loss_per_data)
+            #print('acc',acc.shape,acc)
+            #print('acc_per_part',acc_per_part.shape,acc_per_part)
+            #print('loss_per_data',loss_per_data.shape,loss_per_data)
+            #print('part_valids',data_dict['part_valids'])
             
             '''
             __array = np.arange(pred_trans.shape[0]*5000*3).reshape(pred_trans.shape[0], 5000, 3) 
@@ -274,19 +276,27 @@ class AutoAgglomerative(pl.LightningModule):
             
             #logits = self.verifier(edge_features, edge_indices, edge_valids)
             #edge_valids torch.Size([1, 190])
+            
+            '''
             tt = np.zeros_like(np.arange(edge_valids.shape[1]).reshape(B, edge_valids.shape[1],1) , float)
             for r in range(B):
                 for i in range(edge_valids.shape[1]):
                     tt[r][i] =  random.random()
-            scores = torch.tensor(tt,device=self.device )
-            print('scores',scores.shape,scores)
+            scores = torch.tensor(tt,device=self.device )            
+            print('scores',scores.shape)
+            '''
+            
+            scores = self.verifier.score(pts, trans1=pred_trans, trans2=gt_trans, rot1=pred_rots, rot2=gt_rots, valids=data_dict['part_valids'], chamfer_distance=self.metric )
 
             
             #scores = torch.sigmoid(logits)
             
-            pred_labels = (scores > self.cfg.verifier.threshold).squeeze(-1) & edge_valids
+            pred_labels = (scores < self.verifier.threshold).squeeze(-1) & edge_valids
+            #print('edge_valids',edge_valids.shape,edge_valids)
+            #print('pred_labels',pred_labels.shape,pred_labels)
+            #print('edge_indices',edge_indices.shape,edge_indices)
             classified_edges = edge_indices[pred_labels]
-
+            print('classified_edges',classified_edges.shape,classified_edges)
             for edge in classified_edges:
                 idx1, idx2 = edge
                 if (part_valids_bool[0][idx1] or part_valids_bool[0][idx2]) is False:
