@@ -109,18 +109,35 @@ class Denoiser(pl.LightningModule):
 
         output_dict = {
             'pred_noise': pred_noise,
-            'gt_noise': noise
+            'gt_noise_center': data_dict['part_rots_center'], # jhahn
+            'gt_noise': noise,
+            'noisy_trans_and_rots': noisy_trans_and_rots,
         }
 
         return output_dict
 
 
     def _loss(self, data_dict, output_dict):
+        part_pcs = data_dict['part_pcs']
+
         pred_noise = output_dict['pred_noise']
+        noisy_trans_and_rots = output_dict['noisy_trans_and_rots']
+        
         part_valids = data_dict['part_valids'].bool()
         noise = output_dict['gt_noise']
+        noise_center = output_dict['gt_noise_center']
 
         part_valids[data_dict["ref_part"]] = False
+
+
+        print(data_dict['data_id'])
+        np.save(f'output/{data_dict["data_id"]}_part_pcs.npz',part_pcs.detach().cpu())
+        np.save(f'output/{data_dict["data_id"]}_pred_noise.npz',pred_noise.detach().cpu())
+        np.save(f'output/{data_dict["data_id"]}_gt_noise.npz',noise.detach().cpu())
+        np.save(f'output/{data_dict["data_id"]}_noise_center.npz',noise_center.detach().cpu())
+        np.save(f'output/{data_dict["data_id"]}_noisy_trans_and_rots.npz',noisy_trans_and_rots.detach().cpu())
+
+
         mse_loss = F.mse_loss(pred_noise[part_valids], noise[part_valids])
 
         return {'mse_loss': mse_loss}

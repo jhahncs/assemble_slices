@@ -48,8 +48,9 @@ cfg.ckpt_path= None
 cfg.experiment_output_path = data_home_dir+'output/denoiser/${experiment_name}/'
 cfg.trainer.max_epochs =  3
 cfg.trainer.check_val_every_n_epoch =  1
-cfg.logger._target_ = 'pytorch_lightning.loggers.WandbLogger'
-cfg.checkpoint_monitor._target_ = 'pytorch_lightning.callbacks.ModelCheckpoint'
+cfg.logger = 'pytorch_lightning.loggers.WandbLogger'
+cfg.checkpoint_monitor = 'pytorch_lightning.callbacks.ModelCheckpoint'
+
 
 
 cfg.trainer.strategy='ddp'

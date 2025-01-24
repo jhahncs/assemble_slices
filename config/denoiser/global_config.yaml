@@ -24,7 +24,7 @@ test_seed: 123
 
 logger:
   # https://pytorch-lightning.readthedocs.io/en/stable/extensions/generated/pytorch_lightning.loggers.WandbLogger.html
-  _target_: lightning.pytorch.loggers.WandbLogger
+  _target_: pytorch_lightning.loggers.WandbLogger
   project: puzzlefusion_plusplus
   name: ${experiment_name}
   save_dir: ${experiment_output_path}/training
@@ -40,7 +40,7 @@ trainer:
 
 # https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.ModelCheckpoint.html
 checkpoint_monitor:
-  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
   monitor: eval/part_acc
   mode: max
   save_last: True

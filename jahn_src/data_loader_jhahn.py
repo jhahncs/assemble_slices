@@ -6,6 +6,7 @@ from tqdm import tqdm
 import copy
 from puzzlefusion_plusplus.denoiser.model.modules.custom_diffusers import PiecewiseScheduler
 import torch
+import jahn_src.slice_util as slice_util
 
 class GeometryLatentDataset(Dataset):
     def __init__(
@@ -141,24 +142,39 @@ class GeometryLatentDataset(Dataset):
         
         ref_part = data_dict['ref_part']
         
-        part_pcs_final, pose_gt_r = self._rotate_whole_part(part_pcs_gt)
-        part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_final, ref_part)
+        #part_pcs_final, pose_gt_r = self._rotate_whole_part(part_pcs_gt)
+        #print(data_dict['data_id'])        
+        #np.save(f'output/{data_dict["data_id"]}_part_pcs_gt',part_pcs_gt)
+
+        #part_pcs_final, part_pcs_gt, pose_gt_t = slice_util.trans_pc(part_pcs_gt)
         
-        cur_pts, cur_quat, cur_trans = [], [], []
+        part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_gt, ref_part)
+        part_pcs_final = torch.from_numpy(part_pcs_final)
+        part_pcs_final, pose_gt_r_c, pose_gt_r = slice_util.rotate_pc(part_pcs_final)
+        
+        #print(f'pose_gt_r_c_{pose_gt_r_c.shape}')
+        
+        pose_gt_r_c = self._pad_data(np.stack(pose_gt_r_c, axis=0)).astype(np.float32) 
+
+
+        cur_pts, cur_quat, cur_quat_center, cur_trans = [], [], [], []
         
         for i in range(num_parts):
             pc = part_pcs_final[i]
-            pc, gt_trans = self._recenter_pc(pc)
-            pc, gt_quat = self._rotate_pc(pc)
+            pc, gt_trans = slice_util.trans_pc(pc)
+            pc, gt_quat_center, gt_quat = slice_util.rotate_pc(pc)
             
             cur_quat.append(gt_quat)
+            cur_quat_center.append(gt_quat_center)            
             cur_trans.append(gt_trans)
             cur_pts.append(pc)
                         
         cur_pts = self._pad_data(np.stack(cur_pts, axis=0)).astype(np.float32)  # [P, N, 3]
         cur_quat = self._pad_data(np.stack(cur_quat, axis=0)).astype(np.float32)  # [P, 4]
+        cur_quat_center = self._pad_data(np.stack(cur_quat_center, axis=0)).astype(np.float32)  # [P, 4]
         cur_trans = self._pad_data(np.stack(cur_trans, axis=0)).astype(np.float32)  # [P, 3]
         part_pcs_gt = self._pad_data(np.stack(part_pcs_gt, axis=0)).astype(np.float32) # [P, N, 3]
+
 
         '''
         if self.mode == 'test':        
@@ -187,10 +203,12 @@ class GeometryLatentDataset(Dataset):
         data_dict['part_pcs'] = cur_pts
         data_dict['part_pcs_gt'] = part_pcs_gt
         data_dict['part_rots'] = cur_quat
+        data_dict['part_rots_center'] = cur_quat_center
         data_dict['part_trans'] = cur_trans
         data_dict['part_scale'] = scale.squeeze(-1)
 
         data_dict['init_pose_r'] = pose_gt_r
+        data_dict['init_pose_r_c'] = pose_gt_r_c
         data_dict['init_pose_t'] = pose_gt_t
 
         
@@ -210,7 +228,7 @@ class GeometryLatentDataset(Dataset):
 
         
         # half of the time, only one reference part
-        if np.random.rand() < 0.5:
+        if True or np.random.rand() < 0.5:
             return data_dict
         
         # Randomly sample more reference parts which connected to the original reference part

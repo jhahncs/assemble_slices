@@ -55,11 +55,11 @@ num_of_slices = 3
 
 mesh_obj_dict = {}
 
-for vol_index in range(10):
+for vol_index in range(100):
 #for vol_index in range(3):
     _dir = f'temp/vase/1/fractured_{vol_index}'
     #_dir = f'/home/greenbaum-gpu/jhahn/data/shape_dataset/data/shape/vase/1/fractured_{vol_index}'
-    _dir = f'/data/jhahn/data/shape_dataset/data/shape/vase/1/fractured_{vol_index}'
+    _dir = f'/data/jhahn/data/shape_dataset/data/shape/vase/0/fractured_{vol_index}'
 
     print(_dir)
     #_dir = f'temp'

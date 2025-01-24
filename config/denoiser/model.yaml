@@ -1,6 +1,7 @@
 model:
   model_name: 
     _target_: puzzlefusion_plusplus.denoiser.model.denoiser.Denoiser
+    #_target_: jahn_src.denoiser_jhahn
 
   encoder_weights_path: null
   multiple_ref_parts: True
