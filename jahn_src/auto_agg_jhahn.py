@@ -13,6 +13,7 @@ from puzzlefusion_plusplus.denoiser.evaluation.evaluator import (
     rot_metrics,
     calc_shape_cd
 )
+from jahn_src import slice_util
 import random
 import numpy as np
 from puzzlefusion_plusplus.denoiser.model.modules.custom_diffusers import PiecewiseScheduler
@@ -96,8 +97,94 @@ class AutoAgglomerative(pl.LightningModule):
         xyz[part_valids.bool()] = encoder_out["xyz"]
         return latent, xyz
 
+    def test_denoiser_only(self, data_dict):
+        gt_trans = data_dict['part_trans']
+        gt_rots = data_dict['part_rots']
+        gt_trans_and_rots = torch.cat([gt_trans, gt_rots], dim=-1)
+        
+        noisy_trans_and_rots = torch.randn(gt_trans_and_rots.shape, device=self.device)
+        #noisy_trans_and_rots = get_noise_trans_rots_concat(gt_trans_and_rots.shape, self.device)
+
+        ref_part = data_dict["ref_part"]        
+
+        reference_gt_and_rots = torch.zeros_like(gt_trans_and_rots, device=self.device)
+        reference_gt_and_rots[ref_part] = gt_trans_and_rots[ref_part]
+
+        noisy_trans_and_rots[ref_part] = reference_gt_and_rots[ref_part]
+
+        part_valids = data_dict['part_valids'].clone()
+        part_scale = data_dict["part_scale"].clone()
+        part_pcs = data_dict["part_pcs"].clone()
+        _centroid = slice_util.pc_centroid(part_pcs)
+        _centroid = _centroid.squeeze(dim=0) #[20, 1000, 3]
+        _centroid = _centroid[:,0,:]
+        #print('_centroid',_centroid.shape,_centroid)
+        all_pred_trans_rots = []
+        for t in self.noise_scheduler.timesteps:
+            timesteps = t.reshape(-1).repeat(len(noisy_trans_and_rots)).cuda()
+            latent, xyz = self._extract_features(part_pcs, part_valids, noisy_trans_and_rots)
+            pred_noise = self.denoiser(
+                noisy_trans_and_rots, 
+                timesteps,
+                latent,
+                xyz,
+                part_valids,
+                part_scale,
+                ref_part
+            )
+            noisy_trans_and_rots = self.noise_scheduler.step(pred_noise, t, noisy_trans_and_rots).prev_sample
+            noisy_trans_and_rots[ref_part] = reference_gt_and_rots[ref_part] 
+            _noisy_trans_and_rots = noisy_trans_and_rots.clone()
+            _noisy_trans_and_rots[...,0] = 0 
+            _noisy_trans_and_rots[...,1] = 0 
+            #_noisy_trans_and_rots[...,2] = 0 
+            _noisy_trans_and_rots[...,3] = 0 
+            _noisy_trans_and_rots[...,4] = 0 
+            _noisy_trans_and_rots[...,5] = 0 
+            _noisy_trans_and_rots[...,6] = 0
+            
+            #print(_noisy_trans_and_rots.shape)
+            _noisy_trans_and_rots = torch.cat([_noisy_trans_and_rots[...,].squeeze(), _centroid],dim=1).unsqueeze(dim=0)
+            _noisy_trans_and_rots[...,7:] = 0
+            #print(_noisy_trans_and_rots.detach().cpu().numpy().shape)
+            print(_noisy_trans_and_rots)
+            all_pred_trans_rots.append(_noisy_trans_and_rots.detach().cpu().numpy())
+        
+        _noisy_trans_and_rots = noisy_trans_and_rots.clone()
+        _noisy_trans_and_rots[...,:3] = 0 
+        pts = data_dict['part_pcs']
+        pred_trans = _noisy_trans_and_rots[..., :3]
+        pred_rots = _noisy_trans_and_rots[..., 3:7]
+
+        expanded_part_scale = data_dict["part_scale"].unsqueeze(-1).expand(-1, -1, 1000, -1)
+        pts = pts * expanded_part_scale
+
+        acc, _, _ = calc_part_acc(pts, trans1=pred_trans, trans2=gt_trans,
+                            rot1=pred_rots, rot2=gt_rots, valids=data_dict['part_valids'], 
+                            chamfer_distance=self.metric)
+        
+        shape_cd = calc_shape_cd(pts, trans1=pred_trans, trans2=gt_trans,
+                            rot1=pred_rots, rot2=gt_rots, valids=data_dict['part_valids'], 
+                            chamfer_distance=self.metric)
+        
+        rmse_r = rot_metrics(pred_rots, gt_rots, data_dict['part_valids'], 'rmse')
+        rmse_t = trans_metrics(pred_trans, gt_trans,  data_dict['part_valids'], 'rmse')
+
+
+        self.acc_list.append(acc)
+        self.rmse_r_list.append(rmse_r)
+        self.rmse_t_list.append(rmse_t)
+        self.cd_list.append(shape_cd)
+
+        self._save_inference_data(data_dict, np.stack(all_pred_trans_rots, axis=0), acc)
 
     def test_step(self, data_dict, idx):
+
+        if self.cfg.verifier.max_iters == 1:
+            print("test_denoiser_only")
+            self.test_denoiser_only(data_dict)
+            return
+
         print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         
         mesh_file_path = data_dict['mesh_file_path']
@@ -166,11 +253,17 @@ class AutoAgglomerative(pl.LightningModule):
         
         all_pred_trans_rots = []
 
-        for iter in range(self.cfg.verifier.max_iters):
+        #for iter in range(self.cfg.verifier.max_iters):
+        for iter in range(4):
             print(f'================iter {iter}============')
             print(mesh_file_path)
             print(ref_part)
-            #print('part_valids',part_valids.shape,part_valids)
+            print('part_valids',part_valids)
+            _temp = ''
+            for i, attr in G.nodes(data=True):
+                _temp += f'{i},{attr["pivot"]},{attr["init_pose"]},{attr["ref_part"]},{attr["valids"]}\n'
+            print(_temp)
+
 
             for t in self.noise_scheduler.timesteps:
                 timesteps = t.reshape(-1).repeat(len(noisy_trans_and_rots)).cuda()
@@ -286,39 +379,68 @@ class AutoAgglomerative(pl.LightningModule):
             print('scores',scores.shape)
             '''
             
-            scores = self.verifier.score(pts, trans1=pred_trans, trans2=gt_trans, rot1=pred_rots, rot2=gt_rots, valids=data_dict['part_valids'], chamfer_distance=self.metric )
+            scores = self.verifier.score(pts, trans1=pred_trans, trans2=gt_trans, rot1=pred_rots, rot2=gt_rots, valids=data_dict['part_valids'], edge_indices = edge_indices, chamfer_distance=self.metric )
+            if iter == 0:# 0:1
+                scores[0][0] = 0.001 
+            elif  iter == 1:# 0:1:2
+                scores[0][0] = 0.001
+                scores[0][19] = 0.001
+            elif  iter >= 2:# 0:1:2:3
+                scores[0][0] = 0.001
+                scores[0][19] = 0.001
+                scores[0][37] = 0.001
 
-            
+
+            print('scores',scores.shape)
+            print('scores',scores[0].squeeze(-1))
             #scores = torch.sigmoid(logits)
-            
-            pred_labels = (scores < self.verifier.threshold).squeeze(-1) & edge_valids
-            #print('edge_valids',edge_valids.shape,edge_valids)
-            #print('pred_labels',pred_labels.shape,pred_labels)
+            _pred_labels = (scores < self.verifier.threshold).to(self.device).squeeze(-1)
+            print('_pred_labels',_pred_labels)
+            #print('edge_valids',edge_valids)
+            #print('scores__',scores < self.verifier.threshold)
+            pred_labels = (scores < self.verifier.threshold).to(self.device).squeeze(-1) & edge_valids
+            print('edge_valids',edge_valids.shape,edge_valids)
+            print('pred_labels',pred_labels.shape,pred_labels)
             #print('edge_indices',edge_indices.shape,edge_indices)
             classified_edges = edge_indices[pred_labels]
-            print('classified_edges',classified_edges.shape,classified_edges)
+            print('classified_edges', classified_edges)
+            print('ref_part_idx',ref_part_idx)
+            print('part_valids_bool',part_valids_bool)
             for edge in classified_edges:
                 idx1, idx2 = edge
+                #print(part_valids_bool[0][idx1],part_valids_bool[0][idx2])
                 if (part_valids_bool[0][idx1] or part_valids_bool[0][idx2]) is False:
                     continue 
+                #print(ref_part_idx,idx1 in ref_part_idx,idx2 in ref_part_idx)
                 if idx1 in ref_part_idx and idx2 in ref_part_idx: # both are reference part
                     continue
                 if idx1 not in ref_part_idx and idx2 not in ref_part_idx: # both are non reference part
                     continue
                 non_ref_part_idx = idx1 if idx1 not in ref_part_idx else idx2
                 new_ref_part_idx_list.append(non_ref_part_idx) 
-
+            print('new_ref_part_idx_list',new_ref_part_idx_list)
             for non_ref_part_idx in new_ref_part_idx_list:
                 ref_part[0][non_ref_part_idx] = True
 
             reference_gt_and_rots = noisy_trans_and_rots.clone()
 
+            #new_ref_part_idx_list [tensor(1, device='cuda:0')]
+            #edge tensor([0, 1], device='cuda:0')
+            #ref_part tensor([[ True,  True, False, False, False, False, False, False, False, False,
+            #        False, False, False, False, False, False, False, False, False, False]],
+            #    device='cuda:0')
+            #G.nodes [0, 1, 2, 3, 4]
+
+
             node_merge_list = []
             for edge in classified_edges:
                 idx1, idx2 = edge
+                print('edge',edge)
+                print('ref_part',ref_part)
+                print(' G.nodes', G.nodes)
                 if node_merge_valids_check(edge, ref_part, G.nodes):
                     node_merge_list.append((idx1.item(), idx2.item()))
-
+            print('node_merge_list',node_merge_list)
             # if all parts classified. then stop
             if (classified_part == larger_parts).all():
                 break
@@ -327,6 +449,7 @@ class AutoAgglomerative(pl.LightningModule):
                 G.add_edges_from(node_merge_list)
 
                 connected_component = list(nx.connected_components(G))
+                print('connected_component',connected_component)
                 for component in connected_component:
                     component = list(component)
 
@@ -341,11 +464,15 @@ class AutoAgglomerative(pl.LightningModule):
                     pivot = max(component, key=lambda x: part_scale[0][x])
                     merge_pcs = merge_node(component, G.nodes, transformed_pts[0])
 
-                    # recenter the part
-                    centroid = merge_pcs.mean(dim=0)
-                    merge_pcs = merge_pcs - centroid
+                    print('component',component)
+                    print('pivot',pivot)
 
-                    assign_init_pose(G.nodes, pred_trans[0], pred_rots[0], centroid, component)
+                    print('merge_pcs',merge_pcs.shape, merge_pcs)
+                    # recenter the part
+                    #centroid = merge_pcs.mean(dim=0)
+                    #merge_pcs = merge_pcs - centroid
+
+                    assign_init_pose(G.nodes, pred_trans[0], pred_rots[0], None, component)
 
                     # Update trans bias
                     '''
@@ -359,7 +486,7 @@ class AutoAgglomerative(pl.LightningModule):
                         G.nodes[c]['pivot'] = pivot
                     
                     merge_pcs_ds = remove_intersect_points_and_fps_ds(merge_pcs, self.metric)
-
+                    print('merge_pcs_ds',merge_pcs_ds.shape, merge_pcs_ds)
                     # normalize pc to [-1, 1]
                     merge_scale = merge_pcs_ds.abs().max()
                     merge_pcs_ds = merge_pcs_ds / merge_scale
@@ -430,7 +557,7 @@ class AutoAgglomerative(pl.LightningModule):
             np.save(os.path.join(save_dir, f"predict_{acc[i]}.npy"), c_trans_rots)
             gt_transformation = torch.cat(
                 [data_dict["part_trans"][i],
-                    data_dict["part_rots"][i]], dim=-1
+                    data_dict["part_rots"][i],data_dict["part_rots_center"][i]], dim=-1
             )[mask]
 
             np.save(os.path.join(
@@ -439,11 +566,18 @@ class AutoAgglomerative(pl.LightningModule):
             )
 
             init_pose_r = data_dict["init_pose_r"][i]
+            
             init_pose_t = data_dict["init_pose_t"][i]
+
             init_pose = torch.cat([init_pose_t, init_pose_r], dim=-1)
             np.save(os.path.join(
                 save_dir, "init_pose.npy"),
                 init_pose.cpu().numpy()
+            )
+            init_pose_r_c = data_dict["init_pose_r_c"][i]
+            np.save(os.path.join(
+                save_dir, "init_pose_centroid.npy"),
+                init_pose_r_c.cpu().numpy()
             )
 
             with open(os.path.join(save_dir, "mesh_file_path.txt"), "w") as f:

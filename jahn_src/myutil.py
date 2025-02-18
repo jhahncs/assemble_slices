@@ -82,6 +82,7 @@ def get_noise_trans_rots_concat(trans_rot_shape, device):
     noise_trans_rots = torch.randn(trans_rot_shape, device=device) # B(insance), N(max parts), trans+rot
     
         #noise_trans = torch.randn((2, 4))
+    #x,y,z,a,rx,ry,rz
     noise_trans_rots[:,:,4:6] = 0.0
     noise_trans_rots[:,:,1] = 0.0
 

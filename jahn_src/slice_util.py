@@ -139,9 +139,7 @@ def top_bottom_pcs(_obj_list, max_num_of_pcs = 1000):
     #_bottom_pc_list_batch = np.array(_bottom_pc_list_batch)
 
     return _top_pc_list_batch, _bottom_pc_list_batch
-
-
-def rotate_pc(_part_pcs, rot_quat = None):
+def pc_centroid(_part_pcs):
     shape_len = len(_part_pcs.shape)
     if shape_len == 4 or shape_len == 3: # [Batch, Parts, num of points, (x,y,z)]
         _centroid_min = torch.min(_part_pcs, axis = shape_len - 2).values
@@ -150,7 +148,11 @@ def rotate_pc(_part_pcs, rot_quat = None):
         _centroid = torch.repeat_interleave(_centroid.unsqueeze(shape_len - 2), _part_pcs.shape[shape_len - 2], dim=shape_len - 2)        
     else:
         _centroid = (torch.max(_part_pcs, axis=0).values - torch.min(_part_pcs, axis=0).values)/2 +  torch.min(_part_pcs, axis=0).values
-        
+    return _centroid
+def rotate_pc(_part_pcs, rot_quat = None):
+    shape_len = len(_part_pcs.shape)
+    _centroid = pc_centroid(_part_pcs)
+
     _part_pcs = _part_pcs - _centroid
 
     if rot_quat is None:
@@ -179,7 +181,7 @@ def trans_pc(_part_pcs, trans_vec = None):
     shape_len = len(_part_pcs.shape)
     if trans_vec is None:
         trans_vec = torch.rand(3)
-        trans_vec[1] = 0
+        #trans_vec[1] = 0
     elif trans_vec is not None and (shape_len == 4 or shape_len == 3): # [Batch, Parts, num of points, (x,y,z)]
         trans_vec = torch.repeat_interleave(trans_vec.unsqueeze(shape_len - 2),  _part_pcs.shape[shape_len - 2], dim= shape_len - 2)   
 

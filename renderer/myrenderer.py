@@ -43,7 +43,7 @@ class MyRenderer:
         # bt.edgeNormals(mesh, angle = 10) # Option3: Edge normal shading
         
         ## set invisible plane (shadow catcher)
-        bt.invisibleGround(location=(0,0,-1), shadowBrightness=0.9)
+        #bt.invisibleGround(location=(0,0,-1), shadowBrightness=0.9)
 
         # set camera
         self.cam = bt.setCamera(
@@ -51,8 +51,8 @@ class MyRenderer:
             lookAtLocation=self.cfg.renderer.camera_kwargs.camLookat,
             focalLength=self.cfg.renderer.camera_kwargs.focalLength
         )
-
-        self.location_offset = Vector(((-0.57, 0, 0.242)))
+        # x: depth, y:left-right, z: top(+)-down(-)
+        self.location_offset = Vector(((-3, -1, -1)))
 
         # set light
         self.sun = bt.setLight_sun(
@@ -110,7 +110,10 @@ class MyRenderer:
         transformation = np.load(predict_file_path)
         gt_transformation = np.load(f"{inference_data_path}/gt.npy")
         init_pose = np.load(f"{inference_data_path}/init_pose.npy")
-        return transformation, gt_transformation, acc, init_pose
+        init_pose_centroid = np.load(f"{inference_data_path}/init_pose_centroid.npy")
+        
+
+        return transformation, gt_transformation, acc, init_pose, init_pose_centroid
     
     def load_edge_info_data(self, file, iter):
         inference_data_path = f"{self.inference_path}/{file}"
@@ -138,7 +141,8 @@ class MyRenderer:
         #print(obj_files)
         for i, obj_file in enumerate(obj_files):
             meshPath = os.path.join(mesh_dir_path, obj_file)
-            location = (-0.57, 0, 0.242)
+            #location = (-0.57, 0, 0.242)
+            location = (-3, -1, -1)
             # location = (-0, 0, 0)
             rotation = (0, 0, 0)
             part = bt.readMesh(meshPath, location, rotation, scale=self.scale)
@@ -159,9 +163,9 @@ class MyRenderer:
         return parts
     
 
-    def render_parts(self, parts, gt_transformatoin, transformation, init_pose, frame=None):
+    def render_parts(self, parts, gt_transformatoin, transformation, init_pose, init_pose_centroid, frame=None):
         for i,shape in enumerate(parts):
-            final_transformation = self.compute_final_transformation(init_pose, gt_transformatoin[i], transformation[i])
+            final_transformation = self.compute_final_transformation(init_pose, init_pose_centroid[i], gt_transformatoin[i], transformation[i])
             shape.rotation_quaternion = final_transformation.to_quaternion()
             shape.location = self.location_offset + final_transformation.to_translation()
             
@@ -238,19 +242,50 @@ class MyRenderer:
         
 
 
-    def compute_final_transformation(self, init_pose, gt_transformation, transformation):
+    def compute_final_transformation(self, init_pose, init_pose_centroid, gt_transformation, transformation):
 
         trans1 = Vector(-init_pose[:3])
         trans_mat1 = Matrix.Translation(trans1)
+
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))
+        rot_mat1 = Quaternion(init_pose[3:]).inverted().to_matrix().to_4x4()
+        init_rot_center_mat_backup = Matrix.Translation(Vector(init_pose_centroid))
+
+
+        gt_rot_center = Matrix.Translation(Vector(-gt_transformation[7:]))
+        trans2 = Vector(-gt_transformation[:3])
+        trans_mat2 = Matrix.Translation(trans2)
+        rot_mat2 = Quaternion(gt_transformation[3:7]).inverted().to_matrix().to_4x4()
+        gt_rot_center_back = Matrix.Translation(Vector(gt_transformation[7:]))
+        
+        rot_center = Matrix.Translation(Vector(-transformation[7:]))
+        trans3 = Vector(transformation[:3])
+        trans_mat3 = Matrix.Translation(trans3)
+        rot_mat3 = Quaternion(transformation[3:7]).normalized().to_matrix().to_4x4()
+        rot_center_back = Matrix.Translation(Vector(transformation[7:]))
+
+        trans4 = Vector(init_pose[:3])
+        trans_mat4 = Matrix.Translation(trans4)
+        rot_mat4 = Quaternion(init_pose[3:]).to_matrix().to_4x4()
+
+        # rotate -> translate -> translate -> rotate -> rotate -> translate
+        final_transformation = init_rot_center_mat_backup @ rot_mat4 @ init_rot_center_mat @ trans_mat4 @ trans_mat3 @ rot_center_back @ rot_mat3 @ rot_center @ gt_rot_center_back @ rot_mat2 @ gt_rot_center @ trans_mat2   @ trans_mat1 @ init_rot_center_mat_backup @ rot_mat1 @ init_rot_center_mat
+        return final_transformation
+    
+    def compute_final_transformation_backup(self, init_pose, gt_transformation, transformation):
+
+        trans1 = Vector(-init_pose[:3])
+        trans_mat1 = Matrix.Translation(trans1)
+
         rot_mat1 = Quaternion(init_pose[3:]).inverted().to_matrix().to_4x4()
 
         trans2 = Vector(-gt_transformation[:3])
         trans_mat2 = Matrix.Translation(trans2)
-        rot_mat2 = Quaternion(gt_transformation[3:]).inverted().to_matrix().to_4x4()
+        rot_mat2 = Quaternion(gt_transformation[3:7]).inverted().to_matrix().to_4x4()
 
         trans3 = Vector(transformation[:3])
         trans_mat3 = Matrix.Translation(trans3)
-        rot_mat3 = Quaternion(transformation[3:]).normalized().to_matrix().to_4x4()
+        rot_mat3 = Quaternion(transformation[3:7]).normalized().to_matrix().to_4x4()
 
         trans4 = Vector(init_pose[:3])
         trans_mat4 = Matrix.Translation(trans4)
@@ -259,7 +294,52 @@ class MyRenderer:
         # rotate -> translate -> translate -> rotate -> rotate -> translate
         final_transformation = rot_mat4 @ trans_mat4 @ trans_mat3 @ rot_mat3 @ rot_mat2 @ trans_mat2  @ trans_mat1 @ rot_mat1
         return final_transformation
+    def compute_gt_pos(self, init_pose,init_pose_centroid):
+
+        trans1 = Vector(-init_pose[:3])
+        trans_mat1 = Matrix.Translation(trans1)
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))
+        rot_mat1 = Quaternion(init_pose[3:]).inverted().to_matrix().to_4x4()
+        init_rot_center_mat_backup = Matrix.Translation(Vector(init_pose_centroid))
+
+
+        trans4 = Vector(init_pose[:3])
+        trans_mat4 = Matrix.Translation(trans4)
+        rot_mat4 = Quaternion(init_pose[3:]).to_matrix().to_4x4()
+
+        # rotate -> translate -> translate -> rotate -> rotate -> translate
+        final_transformation = init_rot_center_mat_backup @ rot_mat4 @ init_rot_center_mat @ trans_mat4 @  trans_mat1 @ init_rot_center_mat_backup @ rot_mat1 @ init_rot_center_mat
+        return final_transformation
         
+    def compute_init_pos(self, init_pose, init_pose_centroid, gt_transformation):
+
+        trans1 = Vector(-init_pose[:3])
+        trans_mat1 = Matrix.Translation(trans1)
+
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))
+        rot_mat1 = Quaternion(init_pose[3:7]).inverted().to_matrix().to_4x4()
+        init_rot_center_mat_back = Matrix.Translation(Vector(init_pose_centroid))
+
+        
+        trans2 = Vector(gt_transformation[:3])
+        trans_mat2 = Matrix.Translation(trans2)
+
+        rot_center_mat = Matrix.Translation(Vector(-gt_transformation[7:]))
+        rot_mat2 = Quaternion(gt_transformation[3:7]).to_matrix().to_4x4()
+        rot_center_mat_back = Matrix.Translation( Vector(gt_transformation[7:]))
+
+
+
+        trans4 = Vector(init_pose[:3])
+        trans_mat4 = Matrix.Translation(trans4)
+
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))
+        rot_mat4 = Quaternion(init_pose[3:7]).to_matrix().to_4x4()
+        init_rot_center_mat_back = Matrix.Translation(Vector(init_pose_centroid))
+
+        # rotate -> translate -> translate -> rotate -> rotate -> translate
+        final_transformation = init_rot_center_mat_back @ rot_mat4 @ init_rot_center_mat @ trans_mat4 @ rot_center_mat_back @ rot_mat2 @  rot_center_mat @ trans_mat2 @ trans_mat1 @ init_rot_center_mat_back @ rot_mat1 @ init_rot_center_mat
+        return final_transformation
 
 
     def save_video(self, ffmpeg_path, imgs_path, video_path, frame):
@@ -286,8 +366,19 @@ class MyRenderer:
         print(f"Video saved to {video_path}")
 
 
-    def save_img(self, parts, gt_transformatoin, transformation, init_pose, save_path):
-        self.render_parts(parts, gt_transformatoin, transformation, init_pose)
+    def save_img(self, parts, gt_transformatoin, transformation, init_pose, init_pose_centroid, save_path):
+        if gt_transformatoin is not None and transformation is None:
+            for i,shape in enumerate(parts):
+                final_transformation = self.compute_init_pos(init_pose, init_pose_centroid[i], gt_transformatoin[i])
+                shape.rotation_quaternion = final_transformation.to_quaternion()
+                shape.location = self.location_offset + final_transformation.to_translation()
+        elif gt_transformatoin is None and transformation is None:
+            for i,shape in enumerate(parts):
+                final_transformation = self.compute_gt_pos(init_pose,init_pose_centroid[i])
+                shape.rotation_quaternion = final_transformation.to_quaternion()
+                shape.location = self.location_offset + final_transformation.to_translation()
+        else:
+            self.render_parts(parts, gt_transformatoin, transformation, init_pose, init_pose_centroid)
         # bt.renderImage(f"./render_results/{self.output_path}/{file}.png", self.cam)
         bt.renderImage(f"{save_path}", self.cam)
         

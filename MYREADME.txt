@@ -1,9 +1,18 @@
+source /data/jhahn/render_env/bin/activate
+
+rm -rdf /data/jhahn/data/shape_dataset/results_render/
+
+
+
+
 deactivate
 conda deactivate
 
 source /home/greenbaum-gpu/jhahn/python_envs/puzzle_env/bin/activate
 source /home/greenbaum-gpu/jhahn/python_envs/brainrender_env/bin/activate
 source /home/greenbaum-gpu/jhahn/python_envs/render_env/bin/activate
+
+
 
 /home/greenbaum-gpu/jhahn/python_envs/render_env/bin/python
 /home/greenbaum-gpu/jhahn/python_envs/puzzle_env/bin/python

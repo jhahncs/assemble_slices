@@ -42,9 +42,11 @@ renderer = MyRenderer(cfg)
 sampled_files = renderer.sample_data_files()
 sampled_files = ['0']
 # sampled_files = ["1"]
+import shutil
+shutil.rmtree('/data/jhahn/data/shape_dataset/results_render/0')
 
 for file in sampled_files:
-    transformation, gt_transformation, acc, init_pose = renderer.load_transformation_data(file)
+    transformation, gt_transformation, acc, init_pose, init_pose_centroid = renderer.load_transformation_data(file)
     
     parts = renderer.load_mesh_parts(file, gt_transformation, init_pose)
     
@@ -53,7 +55,13 @@ for file in sampled_files:
     save_path = cfg.renderer.output_path+f'{file}'
     os.makedirs(save_path, exist_ok=True)
 
-    renderer.save_img(parts, gt_transformation, gt_transformation, init_pose, os.path.join(save_path, "gt.png"))
+    print(transformation)
+    print(gt_transformation)
+    renderer.save_img(parts, gt_transformation, None, init_pose, init_pose_centroid, os.path.join(save_path, "init.png"))
+    #renderer.clean()
+
+    renderer.save_img(parts, None, None, init_pose, init_pose_centroid, os.path.join(save_path, "gt.png"))
+
 
     #if True:
     #    continue
@@ -62,11 +70,13 @@ for file in sampled_files:
     # bpy.ops.wm.save_mainfile(filepath=save_path + "test" + '.blend')
 
     for i in range(transformation.shape[0]):
+        #if i % 19 == 0:
         renderer.render_parts(
             parts, 
             gt_transformation, 
             transformation[i], 
             init_pose, 
+            init_pose_centroid,
             frame,
         )
         frame += 1

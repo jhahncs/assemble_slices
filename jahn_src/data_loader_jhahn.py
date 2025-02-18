@@ -30,7 +30,7 @@ class GeometryLatentDataset(Dataset):
             self.data_files = self.data_files[:overfit] 
         
         self.data_list = []
-
+        self.data_files = self.data_files[:1]
         for file_name in tqdm(self.data_files):
             data_dict = np.load(os.path.join(self.data_dir, file_name))
             num_parts = data_dict["num_parts"].item()
@@ -151,19 +151,24 @@ class GeometryLatentDataset(Dataset):
         part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_gt, ref_part)
         part_pcs_final = torch.from_numpy(part_pcs_final)
         part_pcs_final, pose_gt_r_c, pose_gt_r = slice_util.rotate_pc(part_pcs_final)
-        
         #print(f'pose_gt_r_c_{pose_gt_r_c.shape}')
-        
-        pose_gt_r_c = self._pad_data(np.stack(pose_gt_r_c, axis=0)).astype(np.float32) 
 
+        pose_gt_r_c = self._pad_data(np.stack(pose_gt_r_c, axis=0)).astype(np.float32) 
+        #print(pose_gt_r_c.shape)#[20, 1000, 3])
+        #pose_gt_r_c = pose_gt_r_c.squeeze(dim=0) #[5, 1000, 3])
+        #print(pose_gt_r_c.shape)
+        pose_gt_r_c = pose_gt_r_c[:,0,:]
+        #print(pose_gt_r_c.shape)
 
         cur_pts, cur_quat, cur_quat_center, cur_trans = [], [], [], []
         
         for i in range(num_parts):
             pc = part_pcs_final[i]
             pc, gt_trans = slice_util.trans_pc(pc)
+            print(gt_trans)
             pc, gt_quat_center, gt_quat = slice_util.rotate_pc(pc)
-            
+            print(gt_quat_center)
+            print(gt_quat)
             cur_quat.append(gt_quat)
             cur_quat_center.append(gt_quat_center)            
             cur_trans.append(gt_trans)
@@ -202,6 +207,7 @@ class GeometryLatentDataset(Dataset):
         
         data_dict['part_pcs'] = cur_pts
         data_dict['part_pcs_gt'] = part_pcs_gt
+        
         data_dict['part_rots'] = cur_quat
         data_dict['part_rots_center'] = cur_quat_center
         data_dict['part_trans'] = cur_trans

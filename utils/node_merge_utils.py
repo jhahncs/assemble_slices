@@ -93,15 +93,18 @@ def get_distance_for_matching_pts(
 
 def node_merge_valids_check(edges, ref_part, nodes):
     ref_part_idx = torch.where(ref_part)[1]
+    print('ref_part_idx',ref_part_idx)
     idx1 = edges[0]
     idx2 = edges[1]
 
     pivot_idx1 = nodes[idx1.item()]["pivot"]
     pivot_idx2 = nodes[idx2.item()]["pivot"]
-
+    print('pivot_idx1',pivot_idx1)
+    print('pivot_idx2',pivot_idx2)
     if torch.isin(ref_part_idx, edges).any():
         return False
-    
+    print(ref_part[0][pivot_idx1])
+    print(ref_part[0][pivot_idx2])
     if ref_part[0][pivot_idx1] or ref_part[0][pivot_idx2]: # Any of part is reference part
         return False
     
@@ -236,8 +239,11 @@ def assign_init_pose(nodes, trans, rots, centroid, component):
 
         affine_matrix = torch.eye(4, device=trans.device)
         affine_matrix[:3, :3] = rot_m
-        affine_matrix[:3, 3] = c_trans - centroid
-
+        if centroid is None:
+            affine_matrix[:3, 3] = c_trans
+        else:
+            affine_matrix[:3, 3] = c_trans - centroid
+        
         if node["init_pose"] is None:
             init_pose = affine_matrix
         else:
