@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import copy
 from jahn_src.myutil import rotate_and_translate_to_xy_plane, calculate_normal_vector_open3d
-
+from mathutils import Quaternion, Vector, Matrix
 class GeometryPartDataset(Dataset):
     """Geometry part assembly dataset.
 
@@ -93,6 +93,15 @@ class GeometryPartDataset(Dataset):
         #print(quat_gt)
         # we use scalar-first quaternion
         quat_gt = quat_gt[[3, 0, 1, 2]]
+
+                #quat_gt[0] = 0.5
+        quat_gt[1] = 0
+        quat_gt[2] = 1
+        quat_gt[3] = 0
+        #print('quat_gt',quat_gt)
+        #print('quat_gt',Quaternion(quat_gt).normalized())
+        q = Quaternion(quat_gt).normalized()
+        quat_gt = np.array([q.w, q.x, q.y, q.z])
         #print(quat_gt)
         return pc, quat_gt
 
@@ -105,8 +114,31 @@ class GeometryPartDataset(Dataset):
         pad_data[:data.shape[0]] = data
         return pad_data
 
-
     def __getitem__(self, idx):
+        """
+        recenter the fragments, and random rotate it to train ae
+        """
+        data_dict = copy.deepcopy(self.data_list[idx])
+        pcs = data_dict['part_pcs']
+        num_parts = data_dict['num_parts']
+
+        cur_pts = []
+        for i in range(num_parts):
+            pc = pcs[i]
+            pc, _ = self._recenter_pc(pc)
+            pc, _ = self._rotate_pc(pc)
+            cur_pts.append(pc)
+            
+        cur_pts = self._pad_data(np.stack(cur_pts, axis=0))  # [P, N, 3]
+        scale = np.max(np.abs(cur_pts), axis=(1,2), keepdims=True)
+        scale[scale == 0] = 1
+        cur_pts = cur_pts / scale
+
+        data_dict['part_pcs'] = cur_pts
+        
+        return data_dict
+
+    def __getitem__backup(self, idx):
         """
         recenter the fragments, and random rotate it to train ae
         

@@ -9,10 +9,10 @@ import os
 import pdb
 from mathutils import Quaternion, Vector, Matrix
 import subprocess
-import sys
-import logging
+
+
 class MyRenderer:
-    def __init__(self, cfg, mylogger):
+    def __init__(self, cfg):
         super(MyRenderer, self).__init__()
         self.cfg = cfg
         self.mesh_path = cfg.renderer.mesh_path
@@ -24,15 +24,9 @@ class MyRenderer:
         self.max_parts = cfg.renderer.max_parts
         self.use_GPU = True
         self.scale = (1, 1, 1)
-        self.mylogger = mylogger
-
-        
         self._init_param()
     
-    def close(self):
-        pass
-
-
+    
     def _init_param(self):
         # init blender
         bt.blenderInit(
@@ -44,8 +38,8 @@ class MyRenderer:
         )
 
         # set shadding
-        #bpy.ops.object.shade_smooth() # Option1: Gouraud shading
-        bpy.ops.object.shade_flat() # Option2: Flat shading
+        bpy.ops.object.shade_smooth() # Option1: Gouraud shading
+        # bpy.ops.object.shade_flat() # Option2: Flat shading
         # bt.edgeNormals(mesh, angle = 10) # Option3: Edge normal shading
         
         ## set invisible plane (shadow catcher)
@@ -57,9 +51,9 @@ class MyRenderer:
             lookAtLocation=self.cfg.renderer.camera_kwargs.camLookat,
             focalLength=self.cfg.renderer.camera_kwargs.focalLength
         )
-
-        #self.location_offset = Vector(((-0.57, 0, 0.242)))
-        self.location_offset = Vector(((-3, -1.5, -1)))
+        # x: depth, y:left-right, z: top(+)-down(-)
+        #self.location_offset = Vector(((-3, -1, -1)))
+        self.location_offset = Vector(((-3, 0, -1)))
         # set light
         self.sun = bt.setLight_sun(
             rotation_euler=self.cfg.renderer.light.lightAngle,
@@ -116,7 +110,10 @@ class MyRenderer:
         transformation = np.load(predict_file_path)
         gt_transformation = np.load(f"{inference_data_path}/gt.npy")
         init_pose = np.load(f"{inference_data_path}/init_pose.npy")
-        return transformation, gt_transformation, acc, init_pose
+        init_pose_centroid = np.load(f"{inference_data_path}/init_pose_centroid.npy")
+        
+
+        return transformation, gt_transformation, acc, init_pose, init_pose_centroid
     
     def load_edge_info_data(self, file, iter):
         inference_data_path = f"{self.inference_path}/{file}"
@@ -136,16 +133,16 @@ class MyRenderer:
         file_path = self._read_mesh_file(file)
 
         mesh_dir_path = os.path.join(self.mesh_path, file_path)
+        #print(mesh_dir_path)
         obj_files = [file for file in os.listdir(mesh_dir_path) if file.endswith('.obj')]
 
         parts = []
         obj_files.sort()
-
+        #print(obj_files)
         for i, obj_file in enumerate(obj_files):
             meshPath = os.path.join(mesh_dir_path, obj_file)
             #location = (-0.57, 0, 0.242)
             location = (-3, 0, -1)
-            location = self.location_offset
             # location = (-0, 0, 0)
             rotation = (0, 0, 0)
             part = bt.readMesh(meshPath, location, rotation, scale=self.scale)
@@ -166,12 +163,9 @@ class MyRenderer:
         return parts
     
 
-    def render_parts(self, parts, gt_transformatoin, transformation, init_pose, init = False, frame=None):
+    def render_parts(self, parts, gt_transformatoin, transformation, init_pose, init_pose_centroid, frame=None):
         for i,shape in enumerate(parts):
-            if init :
-                final_transformation = self.compute_init_transformation(init_pose, gt_transformatoin[i], transformation[i])
-            else:
-                final_transformation = self.compute_final_transformation(init_pose, gt_transformatoin[i], transformation[i])
+            final_transformation = self.compute_final_transformation(shape, init_pose, init_pose_centroid[i], gt_transformatoin[i], transformation[i])
             shape.rotation_quaternion = final_transformation.to_quaternion()
             shape.location = self.location_offset + final_transformation.to_translation()
             
@@ -248,56 +242,117 @@ class MyRenderer:
         
 
 
-    def compute_final_transformation(self, init_pose, gt_transformation, transformation):
+    def compute_final_transformation(self, shape, init_pose, init_pose_centroid, gt_transformation, transformation):
+        #print(shape)
+        #print(type(shape))
+
+        mesh = shape.data        
+        p = []
+        for vert in mesh.vertices:
+            p.append([vert.co.x, vert.co.y, vert.co.z])
+        _centroid_min = np.min(p, axis = 0)
+        _centroid_max = np.max(p, axis = 0)
+        _centroid = (_centroid_max- _centroid_min)/2 +  _centroid_min
+
+        init_rot_center_mat2 = Matrix.Translation(Vector(-_centroid))       
+        rot_mat2 = Quaternion(transformation[3:7]).to_matrix().to_4x4()
+        init_rot_center_mat2_back = Matrix.Translation(Vector(_centroid))
+
+
+        trans_mat1 = Matrix.Translation(Vector(-init_pose[:3]))
+
+        trans_mat2 = Matrix.Translation(Vector(-gt_transformation[:3]))
+
+
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))        
+        rot_mat1 = Quaternion(gt_transformation[3:7]).to_matrix().to_4x4()
+        init_rot_center_mat_back = Matrix.Translation(Vector(init_pose_centroid))
+
+
+        pred_trans = Matrix.Translation(Vector(transformation[:3]))
+
+
+         
+        
+
+        # rotate -> translate -> translate -> rotate -> rotate -> translate
+        final_transformation = pred_trans @ init_rot_center_mat_back @ rot_mat1 @ init_rot_center_mat @ trans_mat2 @ trans_mat1 @ init_rot_center_mat2_back @ rot_mat2 @ init_rot_center_mat2
+        return final_transformation
+    
+    def compute_final_transformation_backup(self, init_pose, gt_transformation, transformation):
 
         trans1 = Vector(-init_pose[:3])
         trans_mat1 = Matrix.Translation(trans1)
-        rot_mat1 = Quaternion(init_pose[3:]).normalized().inverted().to_matrix().to_4x4()
+
+        rot_mat1 = Quaternion(init_pose[3:]).inverted().to_matrix().to_4x4()
 
         trans2 = Vector(-gt_transformation[:3])
         trans_mat2 = Matrix.Translation(trans2)
-        rot_mat2 = Quaternion(gt_transformation[3:]).inverted().to_matrix().to_4x4()
+        rot_mat2 = Quaternion(gt_transformation[3:7]).inverted().to_matrix().to_4x4()
 
         trans3 = Vector(transformation[:3])
         trans_mat3 = Matrix.Translation(trans3)
-        #self.mylogger.info(f'trans_mat3 {transformation[:3]}')
-        #rot_mat3 = Quaternion(transformation[3:]).normalized().to_matrix().to_4x4() # norm([0,0,0,0]) --> norm([0,1,0,0]) 
-        rot_mat3 = Quaternion(transformation[3:]).normalized().to_matrix().to_4x4()
-        #self.mylogger.info(f'Quaternion {Quaternion(transformation[3:])}')
-        #self.mylogger.info(f'Quaternion norm {Quaternion(transformation[3:]).normalized()}')
+        rot_mat3 = Quaternion(transformation[3:7]).normalized().to_matrix().to_4x4()
+
         trans4 = Vector(init_pose[:3])
         trans_mat4 = Matrix.Translation(trans4)
         rot_mat4 = Quaternion(init_pose[3:]).to_matrix().to_4x4()
 
         # rotate -> translate -> translate -> rotate -> rotate -> translate
         final_transformation = rot_mat4 @ trans_mat4 @ trans_mat3 @ rot_mat3 @ rot_mat2 @ trans_mat2  @ trans_mat1 @ rot_mat1
-        
-        #final_transformation =  trans_mat4 @ trans_mat3 @  trans_mat2  @ trans_mat1 
-        #final_transformation =  trans_mat1  @  rot_mat1
         return final_transformation
-        
+    def compute_gt_pos(self, init_pose,init_pose_centroid):
 
-    def compute_init_transformation(self, init_pose, gt_transformation, transformation):
 
-        trans1 = Vector(-init_pose[:3])
-        trans_mat1 = Matrix.Translation(trans1)
+        trans_mat1 = Matrix.Translation(Vector(-init_pose[:3]))
+
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))
         rot_mat1 = Quaternion(init_pose[3:]).inverted().to_matrix().to_4x4()
-
-        trans2 = Vector(-gt_transformation[:3])
-        trans_mat2 = Matrix.Translation(trans2)
-        rot_mat2 = Quaternion(gt_transformation[3:]).inverted().to_matrix().to_4x4()
+        init_rot_center_mat_backup = Matrix.Translation(Vector(init_pose_centroid))
 
 
-        trans4 = Vector(init_pose[:3])
-        trans_mat4 = Matrix.Translation(trans4)
+        trans_mat4 = Matrix.Translation(Vector(init_pose[:3]))
         rot_mat4 = Quaternion(init_pose[3:]).to_matrix().to_4x4()
 
         # rotate -> translate -> translate -> rotate -> rotate -> translate
-        final_transformation = rot_mat4 @ trans_mat4 @ rot_mat2 @ trans_mat2  @ trans_mat1 @ rot_mat1
-        #final_transformation = trans_mat1  @  rot_mat1 @ rot_mat2 @  trans_mat2
+        #
+        #final_transformation = init_rot_center_mat_backup @ rot_mat4 @ init_rot_center_mat @ trans_mat4 @  trans_mat1 @ init_rot_center_mat_backup @ rot_mat1 @ init_rot_center_mat
+        final_transformation = trans_mat1
         return final_transformation
         
-    def save_video(self,ffmpeg_path, imgs_path, video_path, frame):
+    def compute_init_pos(self, init_pose, init_pose_centroid, gt_transformation):
+
+   
+        trans_mat1 = Matrix.Translation(Vector(-init_pose[:3]))
+
+        trans_mat2 = Matrix.Translation(Vector(-gt_transformation[:3]))
+
+
+        init_rot_center_mat = Matrix.Translation(Vector(-init_pose_centroid))        
+        rot_mat1 = Quaternion(gt_transformation[3:7]).to_matrix().to_4x4()
+        init_rot_center_mat_back = Matrix.Translation(Vector(init_pose_centroid))
+ 
+        
+
+        rot_center_mat = Matrix.Translation(Vector(-gt_transformation[7:]))
+        rot_mat2 = Quaternion(init_pose[3:7]).inverted().to_matrix().to_4x4()
+        rot_center_mat_back = Matrix.Translation( Vector(gt_transformation[7:]))
+
+
+
+
+        trans_mat4 = Matrix.Translation(Vector(init_pose[:3]))
+
+        rot_mat4 = Quaternion(init_pose[3:7]).to_matrix().to_4x4()
+
+        # rotate -> translate -> translate -> rotate -> rotate -> translate
+        #final_transformation = init_rot_center_mat_back @ rot_mat4 @ init_rot_center_mat @ trans_mat4 @ rot_center_mat_back @ \
+        #rot_mat2 @  rot_center_mat @ trans_mat2 @ trans_mat1 @ init_rot_center_mat_back @ rot_mat1 @ init_rot_center_mat
+        final_transformation = init_rot_center_mat_back @ rot_mat1 @ init_rot_center_mat @ trans_mat2 @ trans_mat1
+        return final_transformation
+
+
+    def save_video(self, ffmpeg_path, imgs_path, video_path, frame):
         bt.renderAnimation(f"{imgs_path}/", self.cam, duration=frame)
         
         # Compile frames into a video using FFmpeg
@@ -321,8 +376,19 @@ class MyRenderer:
         print(f"Video saved to {video_path}")
 
 
-    def save_img(self, parts, gt_transformatoin, transformation, init_pose, save_path, init = False):
-        self.render_parts(parts, gt_transformatoin, transformation, init_pose, init = init)
+    def save_img(self, parts, gt_transformatoin, transformation, init_pose, init_pose_centroid, save_path):
+        if gt_transformatoin is not None and transformation is None:
+            for i,shape in enumerate(parts):
+                final_transformation = self.compute_init_pos(init_pose, init_pose_centroid[i], gt_transformatoin[i])
+                shape.rotation_quaternion = final_transformation.to_quaternion()
+                shape.location = self.location_offset + final_transformation.to_translation()
+        elif gt_transformatoin is None and transformation is None:
+            for i,shape in enumerate(parts):
+                final_transformation = self.compute_gt_pos(init_pose,init_pose_centroid[i])
+                shape.rotation_quaternion = final_transformation.to_quaternion()
+                shape.location = self.location_offset + final_transformation.to_translation()
+        else:
+            self.render_parts(parts, gt_transformatoin, transformation, init_pose, init_pose_centroid)
         # bt.renderImage(f"./render_results/{self.output_path}/{file}.png", self.cam)
         bt.renderImage(f"{save_path}", self.cam)
         
@@ -337,3 +403,4 @@ class MyRenderer:
                 # Deselect other objects
                 obj.select_set(False)
         bpy.ops.object.delete()
+

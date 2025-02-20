@@ -1,0 +1,2 @@
+python train_vqvae_jhahn.py
+python train_denoiser_jhahn.py

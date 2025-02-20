@@ -7,7 +7,8 @@ import copy
 from puzzlefusion_plusplus.denoiser.model.modules.custom_diffusers import PiecewiseScheduler
 import torch
 import jahn_src.slice_util as slice_util
-
+import time
+from mathutils import Quaternion, Vector, Matrix
 class GeometryLatentDataset(Dataset):
     def __init__(
             self,
@@ -20,7 +21,7 @@ class GeometryLatentDataset(Dataset):
         self.mode = data_fn
         self.data_dir = data_dir
         self.data_files = sorted([f for f in os.listdir(self.data_dir) if f.endswith('.npz')])
-
+        self.denoiser_only_flag = True
         #self.data_files = self.data_files[:100]
         
         self.noise_scheduler = PiecewiseScheduler()
@@ -92,12 +93,24 @@ class GeometryLatentDataset(Dataset):
         """
         pc: [N, 3]
         """
-    
+        torch.manual_seed(int(str(time.time())[-1]))
+        np.random.seed(seed=int(str(time.time())[-1]))
+
         rot_mat = R.random().as_matrix()
         pc = (rot_mat @ pc.T).T
         quat_gt = R.from_matrix(rot_mat.T).as_quat()
         # we use scalar-first quaternion
         quat_gt = quat_gt[[3, 0, 1, 2]]
+        
+        #quat_gt[0] = 0.5
+        quat_gt[1] = 0
+        quat_gt[2] = 1
+        quat_gt[3] = 0
+        #print('quat_gt',quat_gt)
+        #print('quat_gt',Quaternion(quat_gt).normalized())
+        q = Quaternion(quat_gt).normalized()
+        quat_gt = np.array([q.w, q.x, q.y, q.z])
+        
         return pc, quat_gt
     
     def _rotate_whole_part(self, pc):
@@ -111,6 +124,16 @@ class GeometryLatentDataset(Dataset):
         quat_gt = R.from_matrix(rot_mat.T).as_quat()
         # we use scalar-first quaternion
         quat_gt = quat_gt[[3, 0, 1, 2]]
+
+        #quat_gt[...,0] = 0.1
+        quat_gt[...,1] = 0
+        quat_gt[...,2] = 1
+        quat_gt[...,3] = 0
+
+        q = Quaternion(quat_gt).normalized()
+        quat_gt = np.array([q.w, q.x, q.y, q.z])
+
+
         return pc.reshape(P, N, 3), quat_gt
     
     def _recenter_ref(self, pc, ref_part):
@@ -130,9 +153,116 @@ class GeometryLatentDataset(Dataset):
         pad_data = np.zeros(pad_shape, dtype=np.float32)
         pad_data[:data.shape[0]] = data
         return pad_data
-    
+
+
 
     def __getitem__(self, idx):
+    
+        data_dict = copy.deepcopy(self.data_list[idx])
+        num_parts = data_dict['num_parts']
+        part_pcs_gt = data_dict['part_pcs_gt']
+        
+        ref_part = data_dict['ref_part']
+        
+        part_pcs_final, pose_gt_r = self._rotate_whole_part(part_pcs_gt)
+        print('pose_gt_r',pose_gt_r)
+        part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_final, ref_part) # ref 파트의 중점으로 전체 파트 이동
+        print('pose_gt_t',pose_gt_t)
+
+        cur_pts, cur_quat, cur_trans = [], [], []
+        
+        for i in range(num_parts):
+            pc = part_pcs_final[i]
+            #if i == np.where(ref_part)[0].item():
+            ##    gt_trans = [0,0,0]
+            #    gt_quat = [0,0,0,0]
+            #    pass
+            #else:
+            pc, gt_trans = self._recenter_pc(pc)
+            pc, gt_quat = self._rotate_pc(pc)
+            print('gt_trans', gt_trans)
+            print('gt_quat', gt_quat)
+            cur_quat.append(gt_quat)
+            cur_trans.append(gt_trans)
+            cur_pts.append(pc)
+                        
+        cur_pts = self._pad_data(np.stack(cur_pts, axis=0)).astype(np.float32)  # [P, N, 3]
+        cur_quat = self._pad_data(np.stack(cur_quat, axis=0)).astype(np.float32)  # [P, 4]
+        cur_trans = self._pad_data(np.stack(cur_trans, axis=0)).astype(np.float32)  # [P, 3]
+        part_pcs_gt = self._pad_data(np.stack(part_pcs_gt, axis=0)).astype(np.float32) # [P, N, 3]
+
+        
+
+        
+        # Normalize the part pcs
+        scale = np.max(np.abs(cur_pts), axis=(1,2), keepdims=True)
+        scale[scale == 0] = 1
+        cur_pts = cur_pts / scale
+        
+        data_dict['part_pcs'] = cur_pts
+        data_dict['part_pcs_gt'] = part_pcs_gt
+        data_dict['part_rots'] = cur_quat
+        data_dict['part_trans'] = cur_trans
+        data_dict['part_scale'] = scale.squeeze(-1)
+
+        data_dict['init_pose_r'] = pose_gt_r
+        data_dict['init_pose_t'] = pose_gt_t
+
+        
+        # Only one reference part
+        if self.cfg.model.multiple_ref_parts is False:
+            return data_dict
+    
+        if self.mode != 'train':
+            return data_dict
+
+        num_parts = data_dict['num_parts']
+        if num_parts == 2:
+            return data_dict
+        
+        # half of the time, only one reference part
+        #if np.random.rand() < 0.5:
+        if True:
+            return data_dict
+        
+        # Randomly sample more reference parts which connected to the original reference part
+        ref_part = data_dict['ref_part']
+        graph = data_dict['graph']
+        scale = data_dict['part_scale']
+
+        ref_part_idx = np.where(ref_part)[0]
+        connect_parts = np.where(graph[ref_part_idx, :])[1]
+
+        larger_connect_parts = [part for part in connect_parts if scale[part] > 0.05]
+        if not larger_connect_parts:
+            return data_dict
+
+        num_connect_parts = len(larger_connect_parts)
+
+        sample_num = np.random.randint(0, num_connect_parts)
+        
+        sample_ref_parts = np.random.choice(connect_parts, sample_num, replace=False)
+        ref_part[sample_ref_parts] = True
+
+        
+        data_dict['ref_part'] = ref_part
+        part_trans_ref = data_dict['part_trans'][sample_ref_parts]
+        part_rots_ref = data_dict['part_rots'][sample_ref_parts]
+        # random perturb the reference part
+        noise_trans = torch.randn(part_trans_ref.shape)
+        noise_rots = torch.randn(part_rots_ref.shape)
+        timesteps = torch.randint(0, 50, (1,)).long()
+        
+        part_trans_ref = self.noise_scheduler.add_noise(torch.tensor(part_trans_ref), noise_trans, timesteps).numpy()
+        part_rots_ref = self.noise_scheduler.add_noise(torch.tensor(part_rots_ref), noise_rots, timesteps).numpy()
+
+        data_dict['part_trans'][sample_ref_parts] = part_trans_ref
+        data_dict['part_rots'][sample_ref_parts] = part_rots_ref
+
+        
+        return data_dict
+
+    def __getitem__backup(self, idx):
         
         data_dict = copy.deepcopy(self.data_list[idx])
         #print(data_dict.keys())
@@ -150,7 +280,11 @@ class GeometryLatentDataset(Dataset):
         
         part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_gt, ref_part)
         part_pcs_final = torch.from_numpy(part_pcs_final)
-        part_pcs_final, pose_gt_r_c, pose_gt_r = slice_util.rotate_pc(part_pcs_final)
+        _, pose_gt_r_c, pose_gt_r = slice_util.rotate_pc(part_pcs_final)
+        print('pose_gt_t',pose_gt_t)
+        print('pose_gt_r_c',pose_gt_r_c)
+        print('pose_gt_r',pose_gt_r)
+
         #print(f'pose_gt_r_c_{pose_gt_r_c.shape}')
 
         pose_gt_r_c = self._pad_data(np.stack(pose_gt_r_c, axis=0)).astype(np.float32) 
@@ -165,10 +299,10 @@ class GeometryLatentDataset(Dataset):
         for i in range(num_parts):
             pc = part_pcs_final[i]
             pc, gt_trans = slice_util.trans_pc(pc)
-            print(gt_trans)
+            #print(gt_trans)
             pc, gt_quat_center, gt_quat = slice_util.rotate_pc(pc)
-            print(gt_quat_center)
-            print(gt_quat)
+            #print(gt_quat_center)
+            #print(gt_quat)
             cur_quat.append(gt_quat)
             cur_quat_center.append(gt_quat_center)            
             cur_trans.append(gt_trans)

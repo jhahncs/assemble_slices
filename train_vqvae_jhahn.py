@@ -66,8 +66,8 @@ cfg.checkpoint_monitor._target_ = 'pytorch_lightning.callbacks.ModelCheckpoint'
 
 
 cfg.trainer.devices=1
-cfg.trainer.max_epochs =  3
-cfg.trainer.check_val_every_n_epoch =  1
+cfg.trainer.max_epochs =  1000
+cfg.trainer.check_val_every_n_epoch =  100
 
 def init_callbacks(cfg):
     checkpoint_monitor = hydra.utils.instantiate(cfg.checkpoint_monitor)

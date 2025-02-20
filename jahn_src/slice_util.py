@@ -8,6 +8,9 @@ import random
 from chamferdist import ChamferDistance
 chamferDist = ChamferDistance()
 
+import time
+
+
 def combine_obj_files(_dir_list, output_dir):
     _obj_list = []
     for _dir in _dir_list:
@@ -154,9 +157,10 @@ def rotate_pc(_part_pcs, rot_quat = None):
     _centroid = pc_centroid(_part_pcs)
 
     _part_pcs = _part_pcs - _centroid
-
+    torch.manual_seed(int(str(time.time())[-1]))
     if rot_quat is None:
         rot_quat = torch.from_numpy(np.array([torch.rand(1).item(), 0, 1.0, 0]))
+        print('rot_quat',rot_quat)
     elif rot_quat is not None and (shape_len == 4 or shape_len == 3):
         rot_quat = torch.repeat_interleave(rot_quat.unsqueeze(shape_len - 2),  _part_pcs.shape[shape_len - 2], dim= shape_len - 2)   
 
@@ -180,6 +184,7 @@ def rotate_pc(_part_pcs, rot_quat = None):
 def trans_pc(_part_pcs, trans_vec = None):
     shape_len = len(_part_pcs.shape)
     if trans_vec is None:
+        torch.manual_seed(int(str(time.time())[-1]))
         trans_vec = torch.rand(3)
         #trans_vec[1] = 0
     elif trans_vec is not None and (shape_len == 4 or shape_len == 3): # [Batch, Parts, num of points, (x,y,z)]

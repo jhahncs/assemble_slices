@@ -3,8 +3,8 @@
 
 # In[2]:
 
-import logging
-from myrenderer import MyRenderer
+
+from jahn_src.renderer.slice_renderer import MyRenderer
 import os
 import hydra
 import json
@@ -37,36 +37,7 @@ cfg.renderer.mesh_path = f'{data_home_dir}data/'
 cfg.ffmpeg_path = '/usr/bin/ffmpeg'
 
 
-
-
-# 로그 생성
-mylogger = logging.getLogger()
-
-
-# 로그의 출력 기준 설정
-mylogger.setLevel(logging.INFO)
-
-# log 출력 형식
-formatter = logging.Formatter('%(asctime)s[%(levelname)s]: %(message)s')
-
-while mylogger.hasHandlers():
-    mylogger.removeHandler(mylogger.handlers[0])
-    
-    
-# log 출력
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(formatter)
-mylogger.addHandler(stream_handler)
-
-if os.path.exists('renderer.log'):
-    os.remove('renderer.log')
-# log를 파일에 출력
-file_handler = logging.FileHandler('renderer.log')
-file_handler.setFormatter(formatter)
-mylogger.addHandler(file_handler)
-
-
-renderer = MyRenderer(cfg, mylogger)
+renderer = MyRenderer(cfg)
     
 sampled_files = renderer.sample_data_files()
 sampled_files = ['0']
@@ -75,7 +46,7 @@ import shutil
 shutil.rmtree('/data/jhahn/data/shape_dataset/results_render/0')
 
 for file in sampled_files:
-    transformation, gt_transformation, acc, init_pose = renderer.load_transformation_data(file)
+    transformation, gt_transformation, acc, init_pose, init_pose_centroid = renderer.load_transformation_data(file)
     
     parts = renderer.load_mesh_parts(file, gt_transformation, init_pose)
     
@@ -84,55 +55,38 @@ for file in sampled_files:
     save_path = cfg.renderer.output_path+f'{file}'
     os.makedirs(save_path, exist_ok=True)
 
-    #print(init_pose)
+    print(init_pose)
     #print(gt_transformation)
-    #mylogger.info()
-    #renderer.save_img(parts, gt_transformation, None, init_pose, init_pose_centroid, os.path.join(save_path, "init.png"))
+    renderer.save_img(parts, gt_transformation, None, init_pose, init_pose_centroid, os.path.join(save_path, "init.png"))
     #renderer.clean()
 
-    #renderer.save_img(parts, None, None, init_pose, init_pose_centroid, os.path.join(save_path, "gt.png"))
-    renderer.save_img(parts, gt_transformation, gt_transformation, init_pose, os.path.join(save_path, "gt.png"))
-    renderer.save_img(parts, gt_transformation, gt_transformation, init_pose, os.path.join(save_path, "init.png"), init=True)
+    renderer.save_img(parts, None, None, init_pose, init_pose_centroid, os.path.join(save_path, "gt.png"))
+
 
     #if True:
-    #    renderer.clean()
     #    continue
-    frame = 1
+    frame = 0
 
     # bpy.ops.wm.save_mainfile(filepath=save_path + "test" + '.blend')
-   
-    renderer.render_parts(
-        parts, 
-        gt_transformation, 
-        gt_transformation, 
-        init_pose, 
-        frame = frame,
-        init = True
-    )
-    
-    frame += 1
+
     for i in range(transformation.shape[0]):
         #if i % 19 == 0:
-        #mylogger.info(transformation[i])
-
         renderer.render_parts(
             parts, 
             gt_transformation, 
             transformation[i], 
             init_pose, 
-            frame = frame,
-            init = False
+            init_pose_centroid,
+            frame,
         )
         frame += 1
-        #if True:
-        #    break
-    #frame -= 1
+
 
     imgs_path = os.path.join(save_path, "imgs")
     os.makedirs(imgs_path, exist_ok=True)
     renderer.save_video(ffmpeg_path = cfg.ffmpeg_path, imgs_path=imgs_path, video_path=os.path.join(save_path, "video.mp4"), frame=frame)
     renderer.clean()
-renderer.close()
+
 
 # In[ ]:
 
