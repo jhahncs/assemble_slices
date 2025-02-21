@@ -118,7 +118,7 @@ class GeometryPartDataset(Dataset):
             A numpy array where element (i, j) is True if meshes[i] and meshes[j] are connected.
         """
         num_meshes = len(meshes)
-        print('num_meshes',num_meshes)
+        #print('num_meshes',num_meshes)
         connectivity_matrix = np.zeros((self.max_num_part, self.max_num_part), dtype=bool)
 
         for i in range(num_meshes):

@@ -65,6 +65,18 @@ class Denoiser(pl.LightningModule):
 
     def _extract_features(self, part_pcs, part_valids, noisy_trans_and_rots):
         B, P , _, _ = part_pcs.shape
+        _shape = list(noisy_trans_and_rots.shape)
+        _shape[-1] = 1
+        _shape = tuple(_shape)
+        noisy_trans_and_rots = torch.concat([noisy_trans_and_rots, \
+                                             torch.zeros(_shape, device=noisy_trans_and_rots.device), \
+                                             torch.ones(_shape, device=noisy_trans_and_rots.device), \
+                                             torch.zeros(_shape, device=noisy_trans_and_rots.device)], axis=2)
+        #_noisy_trans_and_rots = noisy_trans_and_rots.clone()
+        #_noisy_trans_and_rots[...,4] = torch.repeat_interleave(torch.Tensor([0]), _noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #_noisy_trans_and_rots[...,5] = torch.repeat_interleave(torch.Tensor([1]), _noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #_noisy_trans_and_rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), _noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        print('noisy_trans_and_rots',noisy_trans_and_rots.shape)
         part_pcs = self._apply_rots(part_pcs, noisy_trans_and_rots)
         part_pcs = part_pcs[part_valids.bool()]
 
@@ -80,9 +92,17 @@ class Denoiser(pl.LightningModule):
     def forward(self, data_dict):
         gt_trans = data_dict['part_trans']
         gt_rots = data_dict['part_rots']
-        gt_trans_and_rots = torch.cat([gt_trans, gt_rots], dim=-1)
+        gt_trans_and_rots = torch.cat([gt_trans, gt_rots], dim=-1)[...,:4]
         ref_part = data_dict["ref_part"]
         noise = torch.randn(gt_trans_and_rots.shape, device=self.device)
+
+        print('==============================')
+        print('noise',noise.shape)
+                
+        #noise[...,4] = torch.repeat_interleave(torch.Tensor([0]), noise.shape[-2], dim=0).unsqueeze(dim=0)
+        #noise[...,5] = torch.repeat_interleave(torch.Tensor([1]), noise.shape[-2], dim=0).unsqueeze(dim=0)
+        #noise[...,6] = torch.repeat_interleave(torch.Tensor([0]), noise.shape[-2], dim=0).unsqueeze(dim=0)
+        
 
         B, P, N, C = data_dict["part_pcs"].shape
 
@@ -90,9 +110,13 @@ class Denoiser(pl.LightningModule):
                                   device=self.device).long()
         
         noisy_trans_and_rots = self.noise_scheduler.add_noise(gt_trans_and_rots, noise, timesteps)
-
+                
+        #noisy_trans_and_rots[...,4] = torch.repeat_interleave(torch.Tensor([0]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #noisy_trans_and_rots[...,5] = torch.repeat_interleave(torch.Tensor([1]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #noisy_trans_and_rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        
         noisy_trans_and_rots[ref_part] = gt_trans_and_rots[ref_part]
-
+        print('noisy_trans_and_rots',noisy_trans_and_rots.shape)
         part_pcs = data_dict["part_pcs"]
         part_valids = data_dict["part_valids"]
         latent, xyz = self._extract_features(part_pcs, part_valids, noisy_trans_and_rots)
@@ -106,7 +130,11 @@ class Denoiser(pl.LightningModule):
             data_dict['part_scale'],
             ref_part
         )
-
+        print('pred_noise',pred_noise.shape)
+        #pred_noise[...,4] = torch.repeat_interleave(torch.Tensor([0]), pred_noise.shape[-2], dim=0).unsqueeze(dim=0)
+        #pred_noise[...,5] = torch.repeat_interleave(torch.Tensor([1]), pred_noise.shape[-2], dim=0).unsqueeze(dim=0)
+        #pred_noise[...,6] = torch.repeat_interleave(torch.Tensor([0]), pred_noise.shape[-2], dim=0).unsqueeze(dim=0)
+        #pred_noise[ref_part]  = gt_trans_and_rots[ref_part]
         output_dict = {
             'pred_noise': pred_noise,
             #'gt_noise_center': data_dict['part_rots_center'], # jhahn
@@ -172,14 +200,21 @@ class Denoiser(pl.LightningModule):
         
         gt_trans = data_dict['part_trans']
         gt_rots = data_dict['part_rots']
-        gt_trans_and_rots = torch.cat([gt_trans, gt_rots], dim=-1)
+        gt_trans_and_rots = torch.cat([gt_trans, gt_rots], dim=-1)[...,:4]
         noisy_trans_and_rots = torch.randn(gt_trans_and_rots.shape, device=self.device)
         ref_part = data_dict["ref_part"]        
 
         reference_gt_and_rots = torch.zeros_like(gt_trans_and_rots, device=self.device)
         reference_gt_and_rots[ref_part] = gt_trans_and_rots[ref_part]
 
-        noisy_trans_and_rots[ref_part] = reference_gt_and_rots[ref_part]
+        #noisy_trans_and_rots[...,4] = torch.repeat_interleave(torch.Tensor([0]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #noisy_trans_and_rots[...,5] = torch.repeat_interleave(torch.Tensor([1]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #noisy_trans_and_rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
+
+        #noisy_trans_and_rots[ref_part] = reference_gt_and_rots[ref_part]
+        
+        #noisy_trans_and_rots = noisy_trans_and_rots[...,:1]
+
 
         part_valids = data_dict['part_valids'].clone()
         part_scale = data_dict["part_scale"].clone()
@@ -189,6 +224,7 @@ class Denoiser(pl.LightningModule):
         for t in self.noise_scheduler.timesteps:
             timesteps = t.reshape(-1).repeat(len(noisy_trans_and_rots)).cuda()
             latent, xyz = self._extract_features(part_pcs, part_valids, noisy_trans_and_rots)
+            
             pred_noise = self.denoiser(
                 noisy_trans_and_rots, 
                 timesteps,
@@ -197,12 +233,22 @@ class Denoiser(pl.LightningModule):
                 part_valids,
                 part_scale,
                 ref_part
-            )
+            ) # torch.Size([10, 20, 4])
+
+
             noisy_trans_and_rots = self.noise_scheduler.step(pred_noise, t, noisy_trans_and_rots).prev_sample
             noisy_trans_and_rots[ref_part] = reference_gt_and_rots[ref_part]  
 
 
         pts = data_dict['part_pcs']
+
+        _shape = list(noisy_trans_and_rots.shape)
+        _shape[-1] = 1
+        _shape = tuple(_shape)
+
+        noisy_trans_and_rots = torch.cat([noisy_trans_and_rots,torch.zeros(_shape,device=noisy_trans_and_rots.device),\
+                          torch.ones(_shape,device=noisy_trans_and_rots.device),
+                          torch.zeros(_shape,device=noisy_trans_and_rots.device)], axis=2)
         pred_trans = noisy_trans_and_rots[..., :3]
         pred_rots = noisy_trans_and_rots[..., 3:]
 

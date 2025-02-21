@@ -29,6 +29,17 @@ import omegaconf
 def main(cfg):
     cfg.data.batch_size = 1
     cfg.data.val_batch_size = 1
+
+    data_home_dir = '/data/jhahn/data/shape_dataset/'
+
+    data_type_name = 'shape'
+
+    cfg.data.data_dir = data_home_dir+f'pc_data/{data_type_name}/train/'
+    cfg.data.data_val_dir = data_home_dir+f'pc_data/{data_type_name}/val/'
+    cfg.data.mesh_data_dir = data_home_dir+'data/'
+    cfg.data.data_fn = data_type_name+".{}.txt"
+
+
     train_loader, val_loader = build_geometry_dataloader(cfg)
     
     def save_data(loader, data_type):
@@ -66,14 +77,14 @@ def main(cfg):
                 part_pcs_gt=part_pcs_gt.cpu().numpy(),
                 ref_part=ref_part.cpu().numpy()
             )
-            print(f"Saved {data_id:05}.npz in {data_type} data.")
+            #print(f"Saved {data_id:05}.npz in {data_type} data.")
             #if True:
             #    break
 
     # Save train data
     save_data(train_loader, 'train')
     # Save validation data
-    save_data(val_loader, 'val')
+    #save_data(val_loader, 'val')
     
 
 

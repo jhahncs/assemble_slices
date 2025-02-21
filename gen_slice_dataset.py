@@ -55,11 +55,11 @@ num_of_slices = 3
 
 mesh_obj_dict = {}
 
-for vol_index in range(100):
+for vol_index in range(1000):
 #for vol_index in range(3):
     _dir = f'temp/vase/1/fractured_{vol_index}'
     #_dir = f'/home/greenbaum-gpu/jhahn/data/shape_dataset/data/shape/vase/1/fractured_{vol_index}'
-    _dir = f'/data/jhahn/data/shape_dataset/data/shape/vase/0/fractured_{vol_index}'
+    _dir = f'/data/jhahn/data/shape_dataset/data/shape/vase/2/fractured_{vol_index}'
 
     print(_dir)
     #_dir = f'temp'
@@ -84,7 +84,9 @@ for vol_index in range(100):
     [xmin,xmax, ymin,ymax, zmin,zmax] = _vol_norm_rotated.bounds()
     slice_tickness = (ymax-ymin)/num_of_slices
     slice_size = (xmax-xmin, slice_tickness, zmax-zmin)
-    print(xmin,xmax, ymin,ymax, zmin,zmax)
+    #
+    # 
+    # print(xmin,xmax, ymin,ymax, zmin,zmax)
 
     #_cmaps = ['Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds','YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu','GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
     slice_list = []

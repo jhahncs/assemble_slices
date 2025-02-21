@@ -38,8 +38,8 @@ cfg.data.data_dir = data_home_dir+f'pc_data/{data_type_name}/train/'
 cfg.data.data_val_dir = data_home_dir+f'pc_data/{data_type_name}/val/'
 cfg.data.mesh_data_dir = data_home_dir+'data/'
 cfg.data.data_fn = data_type_name+".{}.txt"
-cfg.data.batch_size = 3
-cfg.data.val_batch_size= 3
+cfg.data.batch_size = 64
+cfg.data.val_batch_size= 64
 
 cfg.experiment_name = 'shape_epoch10'
 cfg.model.encoder_weights_path =  f'{data_home_dir}/output/autoencoder/{cfg.experiment_name}'+'/training/last.ckpt'
@@ -47,10 +47,10 @@ cfg.model.encoder_weights_path =  f'{data_home_dir}/output/autoencoder/{cfg.expe
 
 cfg.ckpt_path= None
 cfg.experiment_output_path = data_home_dir+'output/denoiser/${experiment_name}/'
-cfg.trainer.max_epochs =  1000
+cfg.trainer.max_epochs =  2000
 cfg.trainer.check_val_every_n_epoch =  100
-cfg.logger = 'pytorch_lightning.loggers.WandbLogger'
-#cfg.checkpoint_monitor = 'pytorch_lightning.callbacks.ModelCheckpoint'
+cfg.logger._target_ = 'pytorch_lightning.loggers.WandbLogger'
+cfg.checkpoint_monitor._target_ = 'pytorch_lightning.callbacks.ModelCheckpoint'
 
 
 
@@ -87,7 +87,7 @@ def main(cfg):
             param.requires_grad = False
 
     # initialize logger
-    #logger = hydra.utils.instantiate(cfg.logger)
+    logger = hydra.utils.instantiate(cfg.logger)
 
     # initialize callbacks
     callbacks = init_callbacks(cfg)
@@ -95,7 +95,7 @@ def main(cfg):
     # initialize trainer
     trainer = pl.Trainer(
         callbacks=callbacks,
-        #logger=logger,
+        logger=logger,
         **cfg.trainer
     )
 

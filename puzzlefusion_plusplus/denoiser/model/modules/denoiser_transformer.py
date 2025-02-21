@@ -41,7 +41,7 @@ class DenoiserTransformer(nn.Module):
         multires = 10
         embed_kwargs = {
             'include_input': True,
-            'input_dims': 7,
+            'input_dims': 4, #7 jhahn
             'max_freq_log2': multires - 1,
             'num_freqs': multires,
             'log_sampling': True,
@@ -99,7 +99,8 @@ class DenoiserTransformer(nn.Module):
             nn.SiLU(),
             nn.Linear(self.model_channels, self.model_channels // 2),
             nn.SiLU(),
-            nn.Linear(self.model_channels // 2, 4),
+            #nn.Linear(self.model_channels // 2, 1),
+            nn.Linear(self.model_channels // 2, 1), # jhahn
         )
 
 
@@ -116,7 +117,7 @@ class DenoiserTransformer(nn.Module):
 
     def _gen_cond(self, x, xyz, latent, scale):
 
-        x = x.flatten(0, 1)  # (B*N, 7)
+        x = x.flatten(0, 1)  # (B*N, 7) (B*N, 4) 
 
         xyz = xyz.flatten(0, 1)  # (B*N, L, 3)
 
@@ -130,7 +131,7 @@ class DenoiserTransformer(nn.Module):
 
         latent = torch.cat((latent, xyz_pos_emb, scale_emb), dim=-1)
         shape_emb = self.shape_embedding(latent)
-
+        print('x',x.shape)
         x_emb = self.param_fc(self.param_embedding(x))
         return x_emb, shape_emb
 
@@ -143,6 +144,11 @@ class DenoiserTransformer(nn.Module):
 
         trans = self.mlp_out_trans(out)
         rots = self.mlp_out_rot(out)
+        #rots = torch.cat([rots,torch.zeros(rots.shape,device=rots.device),torch.ones(rots.shape,device=rots.device),torch.zeros(rots.shape,device=rots.device)], axis=2)
+        #print('rots',rots.shape)
+        #rots[...,4] = torch.repeat_interleave(torch.Tensor([0]), rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #rots[...,5] = torch.repeat_interleave(torch.Tensor([1]), rots.shape[-2], dim=0).unsqueeze(dim=0)
+        #rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), rots.shape[-2], dim=0).unsqueeze(dim=0)
 
         return torch.cat([trans, rots], dim=-1)
 
