@@ -2,6 +2,7 @@ import torch
 from torch.nn import functional as F
 import pytorch_lightning as pl
 import hydra
+import torch.optim.sgd
 from puzzlefusion_plusplus.denoiser.model.modules.denoiser_transformer import DenoiserTransformer
 from tqdm import tqdm
 from chamferdist import ChamferDistance
@@ -14,16 +15,17 @@ from puzzlefusion_plusplus.denoiser.evaluation.evaluator import (
 import numpy as np
 from puzzlefusion_plusplus.denoiser.model.modules.custom_diffusers import PiecewiseScheduler
 from pytorch3d import transforms
-
+import wandb
 
 class Denoiser(pl.LightningModule):
     def __init__(self, cfg):
         super(Denoiser, self).__init__()
         self.cfg = cfg
         self.denoiser = DenoiserTransformer(cfg)
-
+            
+        # 하이퍼-파라미터를 self.hparams에 저장합니다 (W&B에서 자동으로 로그됨)
         self.save_hyperparameters()
-
+        #print('wandb.config',wandb.config)
         self.noise_scheduler = PiecewiseScheduler(
             num_train_timesteps=cfg.model.DDPM_TRAIN_STEPS,
             beta_schedule=cfg.model.DDPM_BETA_SCHEDULE,
@@ -76,7 +78,7 @@ class Denoiser(pl.LightningModule):
         #_noisy_trans_and_rots[...,4] = torch.repeat_interleave(torch.Tensor([0]), _noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
         #_noisy_trans_and_rots[...,5] = torch.repeat_interleave(torch.Tensor([1]), _noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
         #_noisy_trans_and_rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), _noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
-        print('noisy_trans_and_rots',noisy_trans_and_rots.shape)
+        #print('noisy_trans_and_rots',noisy_trans_and_rots.shape)
         part_pcs = self._apply_rots(part_pcs, noisy_trans_and_rots)
         part_pcs = part_pcs[part_valids.bool()]
 
@@ -96,8 +98,8 @@ class Denoiser(pl.LightningModule):
         ref_part = data_dict["ref_part"]
         noise = torch.randn(gt_trans_and_rots.shape, device=self.device)
 
-        print('==============================')
-        print('noise',noise.shape)
+        ##print('==============================')
+        #print('noise',noise.shape)
                 
         #noise[...,4] = torch.repeat_interleave(torch.Tensor([0]), noise.shape[-2], dim=0).unsqueeze(dim=0)
         #noise[...,5] = torch.repeat_interleave(torch.Tensor([1]), noise.shape[-2], dim=0).unsqueeze(dim=0)
@@ -116,7 +118,7 @@ class Denoiser(pl.LightningModule):
         #noisy_trans_and_rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), noisy_trans_and_rots.shape[-2], dim=0).unsqueeze(dim=0)
         
         noisy_trans_and_rots[ref_part] = gt_trans_and_rots[ref_part]
-        print('noisy_trans_and_rots',noisy_trans_and_rots.shape)
+        #print('noisy_trans_and_rots',noisy_trans_and_rots.shape)
         part_pcs = data_dict["part_pcs"]
         part_valids = data_dict["part_valids"]
         latent, xyz = self._extract_features(part_pcs, part_valids, noisy_trans_and_rots)
@@ -130,7 +132,7 @@ class Denoiser(pl.LightningModule):
             data_dict['part_scale'],
             ref_part
         )
-        print('pred_noise',pred_noise.shape)
+        #print('pred_noise',pred_noise.shape)
         #pred_noise[...,4] = torch.repeat_interleave(torch.Tensor([0]), pred_noise.shape[-2], dim=0).unsqueeze(dim=0)
         #pred_noise[...,5] = torch.repeat_interleave(torch.Tensor([1]), pred_noise.shape[-2], dim=0).unsqueeze(dim=0)
         #pred_noise[...,6] = torch.repeat_interleave(torch.Tensor([0]), pred_noise.shape[-2], dim=0).unsqueeze(dim=0)
@@ -178,8 +180,8 @@ class Denoiser(pl.LightningModule):
         total_loss = 0
         for loss_name, loss_value in loss_dict.items():
             total_loss += loss_value
-            self.log(f"train_loss/{loss_name}", loss_value, on_step=True, on_epoch=False)
-        self.log(f"train_loss/total_loss", total_loss, on_step=True, on_epoch=False)
+            self.log(f"train_loss/{loss_name}", loss_value, on_step=True, on_epoch=False, batch_size = self.cfg.data.batch_size)
+        self.log(f"train_loss/total_loss", total_loss, on_step=True, on_epoch=False, batch_size = self.cfg.data.batch_size)
         
         return total_loss
     
@@ -191,8 +193,8 @@ class Denoiser(pl.LightningModule):
         total_loss = 0
         for loss_name, loss_value in loss_dict.items():
             total_loss += loss_value
-            self.log(f"val_loss/{loss_name}", loss_value, on_step=False, on_epoch=True)
-        self.log(f"val_loss/total_loss", total_loss, on_step=False, on_epoch=True)
+            self.log(f"val_loss/{loss_name}", loss_value, on_step=False, on_epoch=True, sync_dist=True, batch_size = self.cfg.data.batch_size)
+        self.log(f"val_loss/total_loss", total_loss, on_step=False, on_epoch=True, sync_dist=True, batch_size = self.cfg.data.batch_size)
                 
 
     def validation_step(self, data_dict, idx):
@@ -278,10 +280,10 @@ class Denoiser(pl.LightningModule):
         total_rmse_r = torch.mean(torch.cat(self.rmse_r_list))
         total_shape_cd = torch.mean(torch.cat(self.cd_list))
         
-        self.log(f"eval/part_acc", total_acc, sync_dist=True)
-        self.log(f"eval/rmse_t", total_rmse_t, sync_dist=True)
-        self.log(f"eval/rmse_r", total_rmse_r, sync_dist=True)
-        self.log(f"eval/shape_cd", total_shape_cd, sync_dist=True)
+        self.log(f"eval/part_acc", total_acc, sync_dist=True, batch_size = self.cfg.data.batch_size)
+        self.log(f"eval/rmse_t", total_rmse_t, sync_dist=True, batch_size = self.cfg.data.batch_size)
+        self.log(f"eval/rmse_r", total_rmse_r, sync_dist=True, batch_size = self.cfg.data.batch_size)
+        self.log(f"eval/shape_cd", total_shape_cd, sync_dist=True, batch_size = self.cfg.data.batch_size)
         self.acc_list = []
         self.rmse_t_list = []
         self.rmse_r_list = []
@@ -290,6 +292,7 @@ class Denoiser(pl.LightningModule):
     
 
     def configure_optimizers(self):
+        '''
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=2e-4,
@@ -297,5 +300,18 @@ class Denoiser(pl.LightningModule):
             weight_decay=1e-6,
             eps=1e-08,
         )
+        '''
+        #print('configure_optimizers',self.parameters())
+                
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=2e-4,
+            betas=(0.95, 0.999),
+            weight_decay=1e-2,
+            eps=1e-08,
+            amsgrad = True
+        )
+
+        
         lr_scheduler = hydra.utils.instantiate(self.cfg.model.lr_scheduler, optimizer=optimizer)
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}

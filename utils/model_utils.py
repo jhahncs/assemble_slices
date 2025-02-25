@@ -66,13 +66,13 @@ class EmbedderNerf:
         self.out_dim = out_dim
 
     def embed(self, inputs):
-        print("----------------------------")
-        print(inputs.shape)
-        print(inputs)
+        #print("----------------------------")
+        #print(inputs.shape)
+        #print(inputs)
         
-        for fn in self.embed_fns:
-            print(fn)
-            print(fn(inputs))
+        ##for fn in self.embed_fns:
+        #    print(fn)
+        #    print(fn(inputs))
         
         return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
 

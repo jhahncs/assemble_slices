@@ -9,7 +9,8 @@ import importlib
 from puzzlefusion_plusplus.denoiser.dataset import dataset
 from omegaconf import OmegaConf,open_dict
 import omegaconf
-
+import wandb
+import shutil
 config_home_dir = './config'
 
 
@@ -38,17 +39,39 @@ cfg.data.data_dir = data_home_dir+f'pc_data/{data_type_name}/train/'
 cfg.data.data_val_dir = data_home_dir+f'pc_data/{data_type_name}/val/'
 cfg.data.mesh_data_dir = data_home_dir+'data/'
 cfg.data.data_fn = data_type_name+".{}.txt"
-cfg.data.batch_size = 64
-cfg.data.val_batch_size= 64
-
+cfg.data.batch_size = 32
+cfg.data.val_batch_size= 32
+cfg.data.num_workers = 32
 cfg.experiment_name = 'shape_epoch10'
 cfg.model.encoder_weights_path =  f'{data_home_dir}/output/autoencoder/{cfg.experiment_name}'+'/training/last.ckpt'
 
 
+cfg.model.num_dim =  64
+cfg.model.num_point = 25
+
+cfg.model.out_channels = 4 #7
+cfg.model.std = 1
+cfg.model.multires = 10
+cfg.model.embed_dim = 256 # 512
+cfg.model.num_layers = 4
+cfg.model.num_heads = 4 # 8
+cfg.model.dropout_rate = 0.2 # 0.1
+cfg.model.DDPM_TRAIN_STEPS = 1000
+cfg.model.DDPM_BETA_SCHEDULE = "linear"
+cfg.model.timestep_spacing ="leading"
+
+cfg.model.PREDICT_TYPE = 'epsilon'
+cfg.model.BETA_START = 0.001 # 0.0001
+cfg.model.BETA_END = 0.02 
+cfg.model.num_inference_steps = 30
+
+
 cfg.ckpt_path= None
 cfg.experiment_output_path = data_home_dir+'output/denoiser/${experiment_name}/'
-cfg.trainer.max_epochs =  2000
-cfg.trainer.check_val_every_n_epoch =  100
+cfg.trainer.max_epochs =  100
+cfg.trainer.check_val_every_n_epoch =  5
+cfg.trainer.log_every_n_steps =  5
+cfg.trainer.precision =  32
 cfg.logger._target_ = 'pytorch_lightning.loggers.WandbLogger'
 cfg.checkpoint_monitor._target_ = 'pytorch_lightning.callbacks.ModelCheckpoint'
 
@@ -70,6 +93,8 @@ def main(cfg):
     # fix the seed
     pl.seed_everything(cfg.train_seed, workers=True)
 
+
+    shutil.rmtree(os.path.join(cfg.experiment_output_path, "training"))
     # create directories for training outputs
     os.makedirs(os.path.join(cfg.experiment_output_path, "training"), exist_ok=True)
 
@@ -88,6 +113,8 @@ def main(cfg):
 
     # initialize logger
     logger = hydra.utils.instantiate(cfg.logger)
+
+
 
     # initialize callbacks
     callbacks = init_callbacks(cfg)

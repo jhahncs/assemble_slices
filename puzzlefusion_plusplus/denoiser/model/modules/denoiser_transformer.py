@@ -6,7 +6,7 @@ from utils.model_utils import (
     EmbedderNerf
 )
 from puzzlefusion_plusplus.denoiser.model.modules.attention import EncoderLayer
-
+import wandb
 
 class DenoiserTransformer(nn.Module):
 
@@ -23,12 +23,15 @@ class DenoiserTransformer(nn.Module):
 
         num_embeds_ada_norm = 6 * self.model_channels
 
+        #_dropout = wandb.config['dropout']
+        _dropout = 0.2
+
         self.transformer_layers = nn.ModuleList([
             EncoderLayer(
                 dim=self.model_channels,
                 num_attention_heads=self.num_heads,
                 attention_head_dim=self.model_channels // self.num_heads,
-                dropout=0.2,
+                dropout=_dropout,
                 activation_fn='geglu',
                 num_embeds_ada_norm=num_embeds_ada_norm, 
                 attention_bias=False,
@@ -44,7 +47,7 @@ class DenoiserTransformer(nn.Module):
             'input_dims': 4, #7 jhahn
             'max_freq_log2': multires - 1,
             'num_freqs': multires,
-            'log_sampling': True,
+            'log_sampling': False,
             'periodic_fns': [torch.sin, torch.cos],
         }
         
@@ -56,13 +59,22 @@ class DenoiserTransformer(nn.Module):
             'input_dims': 3,
             'max_freq_log2': multires - 1,
             'num_freqs': multires,
-            'log_sampling': True,
+            'log_sampling': False,
             'periodic_fns': [torch.sin, torch.cos],
         }
         embedder_pos = EmbedderNerf(**embed_pos_kwargs)
         # Pos embedding for positions of points xyz
         self.pos_embedding = lambda x, eo=embedder_pos: eo.embed(x)
-
+        '''
+        embed_scale_kwargs = {
+            'include_input': True,
+            'input_dims': 1,
+            'max_freq_log2': multires - 1,
+            'num_freqs': multires,
+            'log_sampling': True,
+            'periodic_fns': [torch.sin, torch.cos],
+        }
+        '''
         embed_scale_kwargs = {
             'include_input': True,
             'input_dims': 1,
@@ -85,23 +97,80 @@ class DenoiserTransformer(nn.Module):
         self.pos_encoding = PositionalEncoding(self.model_channels)
 
         # mlp out for translation N, 256 -> N, 3
-        self.mlp_out_trans = nn.Sequential(
-            nn.Linear(self.model_channels, self.model_channels),
-            nn.SiLU(),
-            nn.Linear(self.model_channels, self.model_channels // 2),
-            nn.SiLU(),
-            nn.Linear(self.model_channels // 2, 3),
-        )
+        #_layers = wandb.config['layers']
+        _layers = 3
 
+        if _layers == 3:
+            #torch.Size([10, 20, 512])
+            self.mlp_out_trans = nn.Sequential(
+                nn.Linear(self.model_channels, self.model_channels),
+                nn.BatchNorm1d(20),
+                nn.SiLU(),
+                nn.Linear(self.model_channels, self.model_channels ),
+                nn.BatchNorm1d(20),
+                nn.SiLU(),                
+                nn.Linear(self.model_channels, self.model_channels ),
+                nn.SiLU(),
+                nn.Linear(self.model_channels, self.model_channels // 2),
+                nn.BatchNorm1d(20),
+                nn.SiLU(),
+                nn.Linear(self.model_channels // 2, 4),
+            )
+        elif _layers== 5:
+            self.mlp_out_trans = nn.Sequential(
+                nn.Conv1d(20, 20, kernel_size=64, stride = 4),
+                nn.SiLU(), # SiLU
+                nn.Conv1d(20, 20, kernel_size=32, stride = 4),
+                nn.SiLU(),
+                nn.Conv1d(20, 20, kernel_size=4, stride = 3),
+                nn.SiLU(),
+                nn.Linear(6, 512),
+                nn.SiLU(),
+                nn.Conv1d(20, 20, kernel_size=64, stride = 4),
+                nn.SiLU(),
+                nn.Conv1d(20, 20, kernel_size=32, stride = 4),
+                nn.SiLU(),
+                nn.Conv1d(20, 20, kernel_size=4, stride = 3),
+                nn.SiLU(),
+                nn.Linear(6, 4)
+            )
+        elif _layers == 10:
+            self.mlp_out_trans = nn.Sequential(
+                nn.Conv1d(self.model_channels, self.model_channels // 2, kernel_size=3, stride=2),
+                nn.SiLU(), # SiLU
+                nn.Conv1d(self.model_channels//2, self.model_channels , kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels, self.model_channels // 4, kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels//4, self.model_channels , kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels, self.model_channels // 6, kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels//6, self.model_channels , kernel_size=3, stride=2),
+                nn.SiLU(), # SiLU
+                nn.Conv1d(self.model_channels, self.model_channels // 8, kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels//8, self.model_channels , kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels, self.model_channels // 10, kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Conv1d(self.model_channels//10, self.model_channels // 10, kernel_size=3, stride=2),
+                nn.SiLU(),
+                nn.Linear(self.model_channels // 10, 4),
+            )
         # mlp out for rotation N, 256 -> N, 4
+        '''
         self.mlp_out_rot = nn.Sequential(
             nn.Linear(self.model_channels, self.model_channels),
-            nn.SiLU(),
+            #nn.Linear(3, self.model_channels),
+            nn.ReLU(),
+            nn.BatchNorm1d(20),
             nn.Linear(self.model_channels, self.model_channels // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             #nn.Linear(self.model_channels // 2, 1),
             nn.Linear(self.model_channels // 2, 1), # jhahn
         )
+        '''
 
 
     # def _gen_mask(self, L, N, B, mask):
@@ -131,26 +200,39 @@ class DenoiserTransformer(nn.Module):
 
         latent = torch.cat((latent, xyz_pos_emb, scale_emb), dim=-1)
         shape_emb = self.shape_embedding(latent)
-        print('x',x.shape)
+        #print('x',x.shape)
         x_emb = self.param_fc(self.param_embedding(x))
         return x_emb, shape_emb
 
 
     def _out(self, data_emb, B, N, L):
-        out = data_emb.reshape(B, N, L, self.model_channels)
 
-        # Avg pooling
-        out = out.mean(dim=2)
 
-        trans = self.mlp_out_trans(out)
-        rots = self.mlp_out_rot(out)
+        #return nn.Linear(512, 4, device=data_emb.device)(data_emb)
+        out = data_emb.reshape(B, N, L, self.model_channels) # 10, 20, 25, 512
+
+        #out = nn.Conv2d(20, 20, 25, device=out.device)(out)
+        #out = out.squeeze(dim=2)
+        #print('=====================')
+        #print(out.shape)
+        #return nn.Linear(488, 4, device=out.device)(out)
+        #return self.mlp_out_trans(out)
+        #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@",out.shape)
+        # Avg pooling        
+        out = out.mean(dim=2)#.values # 10, 20, 512
+        #print("$$$$$$$$$$$$$$$$$$$$$$$$",out.shape)
+        #rots = self.mlp_out_rot(out)
+        trans = self.mlp_out_trans(out) # 10, 20, 3
+        #print("$$$$$$$$$$$$$$$$$$$$$$$$",trans.shape)
+        
         #rots = torch.cat([rots,torch.zeros(rots.shape,device=rots.device),torch.ones(rots.shape,device=rots.device),torch.zeros(rots.shape,device=rots.device)], axis=2)
         #print('rots',rots.shape)
         #rots[...,4] = torch.repeat_interleave(torch.Tensor([0]), rots.shape[-2], dim=0).unsqueeze(dim=0)
         #rots[...,5] = torch.repeat_interleave(torch.Tensor([1]), rots.shape[-2], dim=0).unsqueeze(dim=0)
         #rots[...,6] = torch.repeat_interleave(torch.Tensor([0]), rots.shape[-2], dim=0).unsqueeze(dim=0)
 
-        return torch.cat([trans, rots], dim=-1)
+        #return torch.cat([trans, rots], dim=-1)
+        return trans
 
 
     def _add_ref_part_emb(self, B, x_emb, ref_part):

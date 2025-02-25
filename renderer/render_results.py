@@ -69,10 +69,10 @@ mylogger.addHandler(file_handler)
 renderer = MyRenderer(cfg, mylogger)
     
 sampled_files = renderer.sample_data_files()
-sampled_files = ['0']
+sampled_files = ['0','1','2','3']
 # sampled_files = ["1"]
 import shutil
-shutil.rmtree('/data/jhahn/data/shape_dataset/results_render/0')
+shutil.rmtree('/data/jhahn/data/shape_dataset/results_render')
 
 for file in sampled_files:
     transformation, gt_transformation, acc, init_pose = renderer.load_transformation_data(file)

@@ -31,7 +31,7 @@ class GeometryLatentDataset(Dataset):
             self.data_files = self.data_files[:overfit] 
         
         self.data_list = []
-        self.data_files = self.data_files[:1]
+        self.data_files = self.data_files[:10]
         for file_name in tqdm(self.data_files):
             data_dict = np.load(os.path.join(self.data_dir, file_name))
             num_parts = data_dict["num_parts"].item()
@@ -165,9 +165,9 @@ class GeometryLatentDataset(Dataset):
         ref_part = data_dict['ref_part']
         
         part_pcs_final, pose_gt_r = self._rotate_whole_part(part_pcs_gt)
-        print('pose_gt_r',pose_gt_r)
+        #print('pose_gt_r',pose_gt_r)
         part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_final, ref_part) # ref 파트의 중점으로 전체 파트 이동
-        print('pose_gt_t',pose_gt_t)
+        #print('pose_gt_t',pose_gt_t)
 
         cur_pts, cur_quat, cur_trans = [], [], []
         
@@ -180,8 +180,8 @@ class GeometryLatentDataset(Dataset):
             #else:
             pc, gt_trans = self._recenter_pc(pc)
             pc, gt_quat = self._rotate_pc(pc)
-            print('gt_trans', gt_trans)
-            print('gt_quat', gt_quat)
+            #print('gt_trans', gt_trans)
+            #print('gt_quat', gt_quat)
             cur_quat.append(gt_quat)
             cur_trans.append(gt_trans)
             cur_pts.append(pc)
@@ -281,9 +281,9 @@ class GeometryLatentDataset(Dataset):
         part_pcs_final, pose_gt_t = self._recenter_ref(part_pcs_gt, ref_part)
         part_pcs_final = torch.from_numpy(part_pcs_final)
         _, pose_gt_r_c, pose_gt_r = slice_util.rotate_pc(part_pcs_final)
-        print('pose_gt_t',pose_gt_t)
-        print('pose_gt_r_c',pose_gt_r_c)
-        print('pose_gt_r',pose_gt_r)
+        #print('pose_gt_t',pose_gt_t)
+        #print('pose_gt_r_c',pose_gt_r_c)
+        #print('pose_gt_r',pose_gt_r)
 
         #print(f'pose_gt_r_c_{pose_gt_r_c.shape}')
 
