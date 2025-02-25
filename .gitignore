@@ -2,6 +2,7 @@ mytest.ipynb
 wandb/
 *.out
 *.obj
+*.ckpt
 output/
 lightning_logs/
 # Byte-compiled / optimized / DLL files
